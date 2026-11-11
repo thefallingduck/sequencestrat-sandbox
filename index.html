@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>html{color-scheme:light}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Sequence Stratigraphy Sandbox</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f1f0ec; --surface:#fbfaf7; --surface-2:#efede7; --ink:#25241e; --muted:#6a675c; --line:#d8d5ca;
+  --accent:#2c6b70; --accent-ink:#ffffff; --accent-soft:#dbe8e7; --plot-bg:#f7f6f1; --sea-label:#28479a;
+  --warn:#9a5b12; --shadow:0 1px 2px rgba(40,36,24,.08);
+  --f-head:"Barlow Semi Condensed","Arial Narrow","Helvetica Neue",Arial,sans-serif;
+  --f-body:"Source Sans 3","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171714; --surface:#21211d; --surface-2:#2a2a25; --ink:#ebe9df; --muted:#a19e90; --line:#3a3932;
+    --accent:#6fb6ba; --accent-ink:#10201f; --accent-soft:#253a3b; --plot-bg:#1c1c18; --sea-label:#a9c4ff;
+    --warn:#e0a85a; --shadow:none; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171714; --surface:#21211d; --surface-2:#2a2a25; --ink:#ebe9df; --muted:#a19e90; --line:#3a3932;
+  --accent:#6fb6ba; --accent-ink:#10201f; --accent-soft:#253a3b; --plot-bg:#1c1c18; --sea-label:#a9c4ff;
+  --warn:#e0a85a; --shadow:none; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--f-body);overflow-x:hidden}
+.wrap{max-width:1560px;margin:0 auto;padding-block:20px 40px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{margin-bottom:16px}
+h1{font:600 clamp(26px,4vw,36px)/1.05 var(--f-head);margin:0 0 4px;letter-spacing:.01em}
+.sub{margin:0;color:var(--muted);max-width:70ch}
+.layout{display:grid;grid-template-columns:310px minmax(0,1fr);gap:20px;align-items:start}
+.main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px;box-shadow:var(--shadow);min-width:0}
+.card h2{font:600 15px/1 var(--f-head);text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px;color:var(--muted)}
+.cv-wrap{position:relative;width:100%}
+.cv-wrap canvas{display:block}
+#secOver{position:absolute;left:0;top:0;cursor:crosshair;touch-action:pan-y}
+.readout{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:10px;min-height:44px;align-items:center;font-size:14px}
+.readout .hint{color:var(--muted)}
+.kv{display:flex;gap:6px;align-items:baseline}
+.kv span.k{font:600 11px var(--f-head);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kv b{font:500 14px var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;border:1px solid rgba(0,0,0,.35);vertical-align:-1px;margin-right:4px}
+.status{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font:400 12.5px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums;align-items:center}
+.pill{display:none;font:600 12px var(--f-head);letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:var(--accent-ink);padding:2px 9px;border-radius:99px}
+.pill.on{display:inline-block}
+.note{font-size:13px;color:var(--muted);margin:6px 0 0}
+.banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;background:var(--accent-soft);border:1px solid var(--accent);color:var(--ink);padding:10px 12px;border-radius:8px;font-weight:600}
+.banner[hidden]{display:none}
+.wells-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.wells-head h2{margin:0}
+button,select{font:500 14px var(--f-body);color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;min-height:36px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+select{width:100%;padding-right:6px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+aside .card{padding:12px 14px}
+fieldset{border:0;border-top:1px solid var(--line);margin:12px 0 0;padding:10px 0 0;min-width:0}
+fieldset:first-of-type{margin-top:0}
+legend{font:600 14px var(--f-head);text-transform:uppercase;letter-spacing:.08em;color:var(--accent);padding:0 8px 0 0}
+.ctl{display:grid;grid-template-columns:1fr auto;gap:0 8px;align-items:baseline;margin-bottom:8px}
+.ctl label{font-size:14px}
+.ctl output{font:500 13px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.ctl input[type=range]{grid-column:1/-1;width:100%;margin:2px 0 0;accent-color:var(--accent);height:24px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.row button{flex:1 1 auto}
+.runbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);padding-block:8px 10px;margin-bottom:6px;border-bottom:1px solid var(--line)}
+.dirty{margin:6px 0 0;font:600 12.5px var(--f-body);color:var(--accent)}
+#runBtn.stale{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 35%,transparent)}
+.chk{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:14px}
+.chk input{width:17px;height:17px;accent-color:var(--accent);margin:0}
+.hintline{font-size:12.5px;color:var(--muted);margin:0 0 6px}
+.sub-head,details.sub>summary{font:600 12px var(--f-head);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:8px 0 4px}
+.sub-head:first-of-type{margin-top:0}
+details.sub{margin-top:6px;border-top:1px dashed var(--line);padding-top:6px}
+details.sub>summary{margin:0 0 6px}
+.trendgrp{border-top:1px dashed var(--line);margin-top:8px;padding-top:8px}
+.warnline{color:var(--warn);font:600 13px/1.35 var(--f-body);margin-top:6px}
+.warnline[hidden]{display:none}
+details>summary{cursor:pointer;font-weight:600;list-style-position:inside}
+details.adv{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+details.adv summary{font:600 14px var(--f-head);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+details.adv .ctls{margin-top:10px}
+.how p{margin:8px 0 0;max-width:80ch}
+.how summary{font:600 15px var(--f-head);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+#jsonBox{display:none;width:100%;height:150px;margin-top:8px;font:12px var(--f-mono);background:var(--surface-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px}
+#jsonBox.on{display:block}
+.msg{font-size:13px;color:var(--muted);min-height:18px;margin-top:6px}
+dialog{max-width:min(94vw,1100px);width:94vw;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:14px}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog img{width:100%;height:auto;display:block;border-radius:4px;border:1px solid var(--line)}
+dialog p{margin:0 0 10px}
+.dlg-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}
+@media (max-width:900px){
+  .layout{display:flex;flex-direction:column}
+  aside{order:2;width:100%}
+  .main{order:1;width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <h1>Sequence Stratigraphy Sandbox</h1>
+    <p class="sub">Change sea level, subsidence and sediment supply, and watch systems tracts and bounding surfaces form in a dip section.</p>
+  </header>
+  <div class="layout">
+    <aside aria-label="Model controls">
+      <div class="card">
+        <div class="ctl" style="grid-template-columns:1fr">
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="custom" hidden>Custom (edited)</option>
+            <option value="default">Default: two sea-level cycles</option>
+            <option value="ref">Reference: five sequences</option>
+            <option value="forced">Forced regression (big fall)</option>
+            <option value="lst">Lowstand wedge</option>
+            <option value="trans">Transgression wins (rapid rise, low supply)</option>
+            <option value="normal">Normal regression (high supply)</option>
+            <option value="tilt">Tectonic tilt only (no eustasy)</option>
+          </select>
+        </div>
+        <div class="runbar">
+          <div class="row" style="margin:0"><button id="runBtn" type="button" class="primary">Run model</button><button id="resetBtn" type="button">Reset to defaults</button></div>
+          <p id="dirty" class="dirty" role="status" hidden>Settings changed. Press Run model to update.</p>
+        </div>
+        <fieldset><legend>Sea level</legend>
+          <p class="hintline">Cycle orders are compressed in time for teaching.</p>
+          <div class="sub-head">Short cycle (3rd-order-like)</div><div id="g-sea"></div>
+          <details class="sub" id="d-sea2"><summary>Medium cycle (2nd-order-like)</summary><div id="g-sea2"></div></details>
+          <details class="sub" id="d-sea3"><summary>Long cycle (1st-order-like)</summary><div id="g-sea3"></div></details>
+          <div class="trendgrp" id="g-sea4"></div>
+        </fieldset>
+        <fieldset><legend>Basin &amp; subsidence</legend><div id="g-sub"></div></fieldset>
+        <fieldset><legend>Sediment</legend><div id="g-sed"></div></fieldset>
+        <fieldset><legend>Waves</legend><div id="g-wave"></div></fieldset>
+        <fieldset><legend>Run</legend><div id="g-run"></div></fieldset>
+        <details class="adv"><summary>Advanced</summary><div class="ctls" id="g-adv"></div></details>
+        <fieldset style="margin-top:14px"><legend>Display</legend>
+          <label class="chk"><input type="checkbox" id="optSurf" checked> Show surfaces</label>
+          <label class="chk"><input type="checkbox" id="optLabels" checked> Show tract labels</label>
+          <label class="chk"><input type="checkbox" id="optSmooth" checked> Smooth along beds</label>
+          <label class="chk"><input type="checkbox" id="optLines"> Show timelines</label>
+          <label class="chk"><input type="checkbox" id="optWhole"> Show whole basin</label>
+          <label class="chk"><input type="checkbox" id="optExercise"> Exercise mode</label>
+        </fieldset>
+        <div class="row">
+          <button id="copyBtn" type="button">Copy run settings</button>
+          <button id="exportBtn" type="button">Export image</button>
+        </div>
+        <textarea id="jsonBox" readonly aria-label="Run settings JSON"></textarea>
+        <div class="msg" id="copyMsg" role="status"></div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="banner" id="banner" hidden>
+        <span>Identify the SB, BSFR, TS, MFS and WRS, then reveal.</span>
+        <button class="primary" id="revealBtn" type="button">Reveal answer</button>
+      </div>
+      <section class="card" aria-label="Cross-section">
+        <h2>Dip section</h2>
+        <div class="cv-wrap" id="secWrap">
+          <canvas id="secBase" role="img" aria-label="Stratigraphic cross-section coloured by sand content"></canvas>
+          <canvas id="secOver" aria-hidden="true"></canvas>
+        </div>
+        <div class="readout" id="readout" aria-live="polite"></div>
+        <div class="status"><span class="pill" id="pill" role="status">Running&hellip;</span><span id="status">Starting&hellip;</span></div>
+        <div class="warnline" id="edgeWarn" role="status" hidden>Sediment is reaching the far edge of the basin, so results near the edge are affected.</div>
+        <p class="note">Water is drawn at the end-of-run sea level. Click the section to place a pseudo-well (up to two).</p>
+      </section>
+
+      <section class="card" aria-label="Wheeler diagram">
+        <h2>Wheeler diagram: the preserved record through time</h2>
+        <div class="cv-wrap" id="wheelWrap"><canvas id="wheelCv" role="img" aria-label="Wheeler diagram: distance versus time, showing only preserved sediment, coloured by sand content"></canvas></div>
+        <div class="readout" id="wheelReadout" aria-live="polite"><span class="hint">Hover the diagram to read time, distance and what is preserved.</span></div>
+      </section>
+
+      <section class="card" aria-label="Pseudo-wells">
+        <div class="wells-head"><h2>Pseudo-wells: sand-content logs</h2><button id="clearWells" type="button">Clear wells</button></div>
+        <div class="cv-wrap" id="wellWrap"><canvas id="wellCv" role="img" aria-label="Grain-size logs of placed wells"></canvas></div>
+      </section>
+
+      <section class="card" aria-label="Time chart">
+        <h2>Sea level and shoreline through time</h2>
+        <div class="cv-wrap" id="timeWrap"><canvas id="timeCv" role="img" aria-label="Eustatic sea level and shoreline position versus time, with systems tract bands"></canvas></div>
+      </section>
+
+      <section class="card how">
+        <details>
+          <summary>How the model works</summary>
+          <p>The model is a 2D dip section: sediment enters at the landward (left) edge and is redistributed by diffusion that is fast on the coastal plain and at the shoreface, then decays with water depth offshore, which builds prograding clinoforms. Random flood pulses bring more, and sandier, sediment for a while. Together, eustasy and subsidence give relative sea level at the shoreline.</p>
+          <p>Eustasy is the sum of a long-term trend and up to three sine cycles (short, medium and long), loosely like 3rd-, 2nd- and 1st-order cycles but compressed in time for teaching. The basin is 300 km long and the section view zooms to where the sediment is (tick <em>Show whole basin</em> to see all of it). The far edge is open: the thin mud film that creeps along the deep basin floor passes out of the model instead of piling against a wall, and the status line reports how much left. The initial shoreline sets where sea level meets the sloping basement at the start of the run. Subsidence is zero landward of the hinge and increases linearly seaward of it; the slider sets the rate at 150 km, and the rate keeps increasing beyond that.</p>
+          <p>While relative sea level falls, rivers erode the coastal plain more efficiently, standing in for flow confined to incised valleys. The <em>Fall-stage river erosion</em> control sets how much stronger (1× turns it off). Stronger erosion truncates more of the older topsets beneath the sequence boundary and delivers more sediment to the falling-stage shoreline.</p>
+          <p>Waves rework the shoreface. Between the shoreline and the depth set by <em>Wave base</em>, marine transport pushes the bed toward an equilibrium shoreface profile that deepens seaward at the <em>Shoreface gradient</em>, instead of toward a flat bed. When rising sea level drowns the gentle coastal plain, it is too shallow for that profile and waves cut it down, carrying fines offshore faster than sand. That erosion sweeps landward with the shoreline and forms the wave ravinement surface (WRS), drawn for each transgression where waves removed at least 0.3 m. At a stillstand the shoreface sits at equilibrium and waves erode little. Set Wave base to 0 to turn this off.</p>
+          <p>Systems tracts follow the four-tract scheme, from relative sea level and shoreline movement: falling RSL is the FSST; rising RSL with a landward-moving shoreline is the TST; rising RSL with a seaward-moving shoreline is the LST after a fall or the HST after a transgression. Surfaces are placed at the transitions: BSFR at the onset of fall, SB at its end, TS at maximum regression and MFS at maximum transgression. An LST forms only if supply outpaces the early rise. If it cannot, the shoreline retreats as soon as sea level turns, there is no LST, and the TS sits directly on the SB. That is a valid outcome, not an error.</p>
+          <p>The section is coloured by sand content. Each model cell is about 1 km wide and covers 1,000 years, so by default colours are blended along beds (inverse-distance-squared weighting, measured in model columns and layers so it does not blend across bedding); untick <em>Smooth along beds</em> to see the raw model cells. The Wheeler diagram shows the same run as distance against time, and only the sediment that is actually preserved, coloured by sand content. Blank areas are gaps in the record, whether nothing was deposited or it was eroded later. Time is grouped into steps of at least 3,000 years. Grain size is carried by the sediment itself: sand, silt and clay are moved separately, each bed records how much of each it holds, erosion takes grains from the bed surface in proportion to what is there, and eroded grains keep their size when they are deposited again. Clay travels farthest offshore, sand least. The model saves one layer per thousand years, so very thin beds such as a few-centimetre ravinement lag are averaged into the deposits around them. Limitations: a single dip profile cannot separate incised valleys from interfluves, so sediment that would fill valleys is spread across the whole coastal plain. This is a simplified teaching model inspired by sedflux (Hutton &amp; Syvitski, 2008), not sedflux itself.</p>
+        </details>
+      </section>
+    </div>
+  </div>
+</div>
+
+<dialog id="expDlg" aria-label="Exported image">
+  <div class="dlg-head"><p style="margin:0">Right-click or long-press the image to save it</p><button id="expClose" type="button">Close</button></div>
+  <img id="expImg" alt="Exported cross-section image">
+</dialog>
+
+<script src="seqstrat.js"></script>
+<script src="wheeler.js"></script>
+<script>
+(function(){
+'use strict';
+const DEF = SeqStrat.DEFAULTS;
+const $ = id => document.getElementById(id);
+
+/* ---------- controls ---------- */
+const CTL = [
+  {g:'g-sea',id:'amp',label:'Amplitude',key:'seaLevelAmplitude',min:0,max:30,step:1,unit:'m',to:v=>v,from:v=>v},
+  {g:'g-sea',id:'period',label:'Period',key:'seaLevelPeriod',min:20,max:200,step:5,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sea4',id:'trend',label:'Long-term trend',key:'seaLevelTrend',min:-0.3,max:0.3,step:0.01,unit:'m/kyr',to:v=>v,from:v=>v},
+  {g:'g-sea',id:'phase',label:'Starting phase',key:'seaLevelPhase',min:0,max:360,step:5,unit:'°',to:v=>v*Math.PI/180,from:v=>v*180/Math.PI},
+  {g:'g-sea2',id:'amp2',label:'Amplitude',key:'seaLevelAmplitude2',min:0,max:30,step:1,unit:'m',to:v=>v,from:v=>v},
+  {g:'g-sea2',id:'period2',label:'Period',key:'seaLevelPeriod2',min:100,max:1000,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sea2',id:'phase2',label:'Starting phase',key:'seaLevelPhase2',min:0,max:360,step:5,unit:'°',to:v=>v*Math.PI/180,from:v=>v*180/Math.PI},
+  {g:'g-sea3',id:'amp3',label:'Amplitude',key:'seaLevelAmplitude3',min:0,max:40,step:1,unit:'m',to:v=>v,from:v=>v},
+  {g:'g-sea3',id:'period3',label:'Period',key:'seaLevelPeriod3',min:400,max:3000,step:50,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sea3',id:'phase3',label:'Starting phase',key:'seaLevelPhase3',min:0,max:360,step:5,unit:'°',to:v=>v*Math.PI/180,from:v=>v*180/Math.PI},
+  {g:'g-sub',id:'ishore',label:'Initial shoreline',key:'initialShoreline',min:10,max:150,step:1,unit:'km',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sub',id:'subs',label:'Rate at 150 km',key:'subsidenceMax',min:0,max:0.5,step:0.01,unit:'m/kyr',to:v=>v,from:v=>v},
+  {g:'g-sub',id:'hinge',label:'Hinge position',key:'hingeX',min:0,max:120,step:1,unit:'km',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sed',id:'supply',label:'Supply',key:'sedimentSupply',min:2,max:40,step:1,unit:'m²/yr',to:v=>v,from:v=>v},
+  {g:'g-sed',id:'vari',label:'Supply variability',key:'supplyVariability',min:0,max:1,step:0.05,unit:'',to:v=>v,from:v=>v},
+  {g:'g-sed',id:'incis',label:'Fall-stage river erosion',key:'fallIncision',min:1,max:4,step:0.25,unit:'×',to:v=>v,from:v=>v},
+  {g:'g-wave',id:'wbase',label:'Wave base (ravinement depth)',key:'ravinementDepth',min:0,max:20,step:1,unit:'m',to:v=>v,from:v=>v},
+  {g:'g-wave',id:'sfgrad',label:'Shoreface gradient',key:'shorefaceGradient',min:0.001,max:0.01,step:0.0005,unit:'m/m',to:v=>v,from:v=>v},
+  {g:'g-run',id:'dur',label:'Duration',key:'duration',min:50,max:600,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-adv',id:'kf',label:'Fluvial diffusivity',key:'kFluvial',min:10000,max:300000,step:5000,unit:'m²/yr',to:v=>v,from:v=>v},
+  {g:'g-adv',id:'km',label:'Marine diffusivity',key:'kMarine',min:10000,max:200000,step:5000,unit:'m²/yr',to:v=>v,from:v=>v},
+  {g:'g-adv',id:'wave',label:'Wave-base depth',key:'waveBaseDepth',min:2,max:30,step:1,unit:'m',to:v=>v,from:v=>v},
+  {g:'g-adv',id:'slope',label:'Initial basement slope',key:'basementSlope',min:0.0002,max:0.002,step:0.0001,unit:'m/m',to:v=>v,from:v=>v}
+];
+const byId = {};
+function decimals(step){const s=String(step);return s.indexOf('.')<0?0:s.split('.')[1].length;}
+function fmtVal(c,v){
+  const n=Number(v);
+  const s = c.step>=1000 ? n.toLocaleString('en-US') : n.toFixed(decimals(c.step));
+  return s+(c.unit?' '+c.unit:'');
+}
+CTL.forEach(c=>{
+  byId[c.id]=c;
+  const el=document.createElement('div'); el.className='ctl';
+  el.innerHTML='<label for="c-'+c.id+'">'+c.label+'</label><output for="c-'+c.id+'" id="o-'+c.id+'"></output>'+
+    '<input type="range" id="c-'+c.id+'" min="'+c.min+'" max="'+c.max+'" step="'+c.step+'">';
+  $(c.g).appendChild(el);
+  c.input=$('c-'+c.id); c.out=$('o-'+c.id);
+});
+function setCtl(id,v){const c=byId[id];c.input.value=v;c.out.textContent=fmtVal(c,c.input.value);}
+function defaultsUI(){const o={};CTL.forEach(c=>{o[c.id]=+(c.from(DEF[c.key]).toFixed(6));});return o;}
+function syncDetails(){[['amp2','d-sea2'],['amp3','d-sea3']].forEach(([a,d])=>{if(parseFloat(byId[a].input.value)>0)$(d).open=true;});}
+function applyUI(vals){CTL.forEach(c=>setCtl(c.id,vals[c.id]));syncDetails();}
+function params(){const p={};CTL.forEach(c=>{p[c.key]=c.to(parseFloat(c.input.value));});return p;}
+const PRESETS = {
+  'default':{},
+  'forced':{amp:20,period:160,dur:240,supply:15},
+  'lst':{supply:15,subs:0.3,period:200,amp:25},
+  'trans':{trend:0.25,amp:4,supply:6},
+  'normal':{amp:3,period:200,trend:0.1,supply:30,subs:0.05},
+  'ref':{dur:600,amp:15,period:120,amp2:8,period2:400,phase2:180,amp3:25,period3:1200,phase3:0,supply:20,subs:0.3},
+  'tilt':{amp:0,trend:0,subs:0.3,hinge:40}
+};
+function applyPreset(name){applyUI(Object.assign(defaultsUI(),PRESETS[name]||{}));}
+
+/* ---------- state ---------- */
+const S = {r:null,wells:[85,118],hover:null,ms:0,secGeo:null,rafOver:0};
+const flags = ()=>{const ex=$('optExercise').checked;return {
+  surf:$('optSurf').checked&&!ex, labels:$('optLabels').checked&&!ex, lines:$('optLines').checked, smooth:$('optSmooth').checked, exercise:ex};};
+
+/* ---------- theme ---------- */
+function theme(){
+  const cs=getComputedStyle(document.documentElement), g=n=>cs.getPropertyValue(n).trim();
+  return {ink:g('--ink'),muted:g('--muted'),line:g('--line'),plotBg:g('--plot-bg'),surface:g('--surface'),
+    sea:g('--sea-label'),accent:g('--accent'),dark:cs.colorScheme.indexOf('dark')>=0&&cs.colorScheme.indexOf('light')<0,
+    mono:g('--f-mono'),body:g('--f-body'),head:g('--f-head')};
+}
+
+/* ---------- colormap ---------- */
+const STOPS=['#f2e33a','#f7a234','#e2602a','#b8321f','#6b1f33','#20206e','#1c3a9e','#3b6cc4'].map(h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16)));
+const PHI0=2.5, PHI1=9.2;
+const LUT=[];
+for(let i=0;i<=255;i++){
+  const f=i/255*(STOPS.length-1), j=Math.min(STOPS.length-2,Math.floor(f)), u=f-j;
+  const c=STOPS[j].map((v,m)=>Math.round(v+(STOPS[j+1][m]-v)*u));
+  LUT.push('rgb('+c.join(',')+')');
+}
+function phiColor(p){return LUT[Math.max(0,Math.min(255,Math.round((p-PHI0)/(PHI1-PHI0)*255)))];}
+function grainClass(p){return p<4?'Sand':(p<=9?'Silt':'Clay');}
+/* sand-content scale: slate (mud) -> grey -> tan -> pale gold (sand); full colour at 80% sand */
+const SAND_STOPS=['#3d4656','#6b6f73','#a39a7e','#d6bf7c','#f0d77a'].map(h=>[1,3,5].map(i=>parseInt(h.substr(i,2),16)));
+const SAND_MAX=0.8;
+const SAND_LUT=[];
+for(let i=0;i<=255;i++){
+  const f=i/255*(SAND_STOPS.length-1), j=Math.min(SAND_STOPS.length-2,Math.floor(f)), u=f-j;
+  SAND_LUT.push(SAND_STOPS[j].map((v,m)=>Math.round(v+(SAND_STOPS[j+1][m]-v)*u)));
+}
+function sandIdx(f){return Math.max(0,Math.min(255,Math.round(f/SAND_MAX*255)));}
+function sandRGB(f){return SAND_LUT[sandIdx(f)];}
+function sandColor(f){const c=SAND_LUT[sandIdx(f)];return 'rgb('+c[0]+','+c[1]+','+c[2]+')';}
+window.sandRGB=sandRGB;
+
+/* Smoothed section raster. Each pixel is placed in its model layer, then coloured by
+   inverse-distance-squared weighting of nearby layer-cell centres, with distance measured
+   in stratigraphic coordinates (columns, layers x ANISO). One layer step counts as far as
+   ANISO columns, so colour blends along beds rather than across them. */
+const ANISO=4;
+let rasterCache=null;
+function sectionRaster(G,r,smooth){
+  const s=Math.min(1.5,window.devicePixelRatio||1);
+  const Wp=Math.max(1,Math.round(G.pw*s)),Hp=Math.max(1,Math.round(G.ph*s));
+  const key=[r.params.duration,r.nLayers,G.pw,G.ph,G.x1,G.y0,G.y1,smooth,s].join('|');
+  if(rasterCache&&rasterCache.r===r&&rasterCache.key===key)return rasterCache.cv;
+  const K=r.nLayers,N=r.x.length,dx=r.dx,x0=r.x[0];
+  const sand=r.sandFraction,hz=r.horizons,base=r.basement;
+  const img=new ImageData(Wp,Hp),px=img.data;
+  const topC=new Float64Array(K),botC=new Float64Array(K);
+  for(let c=0;c<Wp;c++){
+    const xm=G.x0+(c+0.5)/Wp*(G.x1-G.x0);
+    const f=Math.max(0,Math.min(N-1.000001,(xm-x0)/dx));
+    const i0=Math.floor(f),t=f-i0,i1=Math.min(N-1,i0+1);
+    const b=base[i0]*(1-t)+base[i1]*t;
+    let prev=b;
+    for(let k=0;k<K;k++){const tp=Math.max(prev,hz[k][i0]*(1-t)+hz[k][i1]*t);botC[k]=prev;topC[k]=tp;prev=tp;}
+    const surf=prev;
+    let k=0;
+    for(let rr=Hp-1;rr>=0;rr--){            // bottom row upward, so the layer index only increases
+      const z=G.y1-(rr+0.5)/Hp*(G.y1-G.y0);
+      if(z<b)continue;
+      if(z>surf)break;
+      while(k<K-1&&topC[k]<z)k++;
+      const th=topC[k]-botC[k];
+      const lk=k+(th>1e-9?(z-botC[k])/th:0.5);
+      let val=NaN;
+      if(smooth){
+        let ws=0,vs=0;
+        const ca=Math.max(0,i0-3),cb=Math.min(N-1,i0+4),la=Math.max(0,k-1),lb=Math.min(K-1,k+1);
+        for(let l=la;l<=lb;l++){
+          const row=sand[l],dl=(l+0.5-lk)*ANISO,dl2=dl*dl;
+          for(let ci=ca;ci<=cb;ci++){
+            const v=row[ci];if(v!==v)continue;
+            const dc=ci-f,w=1/Math.max(dc*dc+dl2,1e-6);
+            ws+=w;vs+=w*v;
+          }
+        }
+        if(ws>0)val=vs/ws;
+      }
+      if(val!==val){const a=sand[k][t<0.5?i0:i1],bb=sand[k][t<0.5?i1:i0];val=a===a?a:bb;}
+      if(val!==val)continue;
+      const col=SAND_LUT[sandIdx(val)],o=(rr*Wp+c)*4;
+      px[o]=col[0];px[o+1]=col[1];px[o+2]=col[2];px[o+3]=255;
+    }
+  }
+  const cv=document.createElement('canvas');cv.width=Wp;cv.height=Hp;
+  cv.getContext('2d').putImageData(img,0,0);
+  rasterCache={r,key,cv};
+  return cv;
+}
+const TRACT_COL={HST:'#4f9d69',FSST:'#c0565a',LST:'#d49a2a',TST:'#3f86b8'};
+const TRACT_NAME={HST:'Highstand (HST)',FSST:'Falling-stage (FSST)',LST:'Lowstand (LST)',TST:'Transgressive (TST)'};
+const SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
+const SURF_ORDER=['SB','BSFR','TS','MFS','WRS'];
+
+/* ---------- helpers ---------- */
+function fitCanvas(cv,w,h){
+  const d=window.devicePixelRatio||1;
+  cv.width=Math.max(1,Math.round(w*d));cv.height=Math.max(1,Math.round(h*d));
+  cv.style.width=w+'px';cv.style.height=h+'px';
+  const ctx=cv.getContext('2d');ctx.setTransform(d,0,0,d,0,0);return ctx;
+}
+function niceStep(range,target){
+  const raw=range/target,p=Math.pow(10,Math.floor(Math.log10(raw))),f=raw/p;
+  return (f<1.5?1:f<3?2:f<7?5:10)*p;
+}
+function ticks(a,b,target){
+  const st=niceStep(b-a,target),out=[];
+  for(let v=Math.ceil(a/st-1e-9)*st;v<=b+1e-9;v+=st)out.push(Math.abs(v)<1e-9?0:+v.toFixed(8));
+  return out;
+}
+function rrect(ctx,x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+
+/* ---------- section geometry ---------- */
+function viewRange(r,forceAuto){
+  const L=r.params.length;
+  if(!forceAuto&&$('optWhole').checked)return L;
+  // zoom to the main sediment body: ignore the thin deep-water mud film on the basin floor
+  let mx=0;for(let i=0;i<r.x.length;i++)mx=Math.max(mx,r.surface[i]-r.basement[i]);
+  const thr=Math.max(1,0.15*mx);
+  let last=0;
+  for(let i=r.x.length-1;i>=0;i--)if(r.surface[i]-r.basement[i]>thr){last=r.x[i];break;}
+  let sh=0;const hs=r.history.shorelineX;for(let k=0;k<hs.length;k++)if(hs[k]>sh)sh=hs[k];
+  const xv=Math.ceil((Math.max(last,sh)+15000)/10000)*10000;
+  return Math.min(L,Math.max(100000,xv));
+}
+function ylim(r,xv){
+  let lo=Infinity,hi=-Infinity;
+  for(let i=0;i<r.basement.length;i++){
+    if(r.x[i]-r.dx/2>xv)break;
+    lo=Math.min(lo,r.basement[i],r.surface[i]);hi=Math.max(hi,r.surface[i],r.basement[i]);
+  }
+  hi=Math.max(hi,r.seaLevel);
+  return [Math.floor((lo-4)/10)*10, Math.ceil((hi+5)/10)*10];
+}
+function layoutSection(W,r){
+  const narrow=W<560;
+  const legendH=narrow?92:58;
+  const ml=narrow?44:56,mr=narrow?10:16,mt=10,mb=narrow?36:42;
+  const plotTotal=Math.round(W/(narrow?1.5:2.2));
+  const H=plotTotal+legendH;
+  const xv=viewRange(r);
+  const [y0,y1]=ylim(r,xv);
+  return {W,H,ml,mr,mt,mb,narrow,legendH,pw:W-ml-mr,ph:plotTotal-mt-mb,y0,y1,x0:0,x1:xv,plotTotal};
+}
+const gx=(G,x)=>G.ml+(x-G.x0)/(G.x1-G.x0)*G.pw;
+const gy=(G,z)=>G.mt+(G.y1-z)/(G.y1-G.y0)*G.ph;
+
+function drawSection(ctx,G,r,fl,T){
+  ctx.clearRect(0,0,G.W,G.H);
+  ctx.fillStyle=T.surface;ctx.fillRect(0,0,G.W,G.H);
+  ctx.fillStyle=T.plotBg;ctx.fillRect(G.ml,G.mt,G.pw,G.ph);
+  const N=Math.min(r.x.length,Math.ceil(G.x1/r.dx)+2);
+  const px=new Float64Array(N);for(let i=0;i<N;i++)px[i]=gx(G,r.x[i]);
+  ctx.save();
+  ctx.beginPath();ctx.rect(G.ml,G.mt,G.pw,G.ph);ctx.clip();
+  // basement
+  ctx.fillStyle='#45473d';ctx.beginPath();
+  ctx.moveTo(px[0],gy(G,G.y0));
+  for(let i=0;i<N;i++)ctx.lineTo(px[i],gy(G,r.basement[i]));
+  ctx.lineTo(px[N-1],gy(G,G.y0));ctx.closePath();ctx.fill();
+  // layers: smoothed (or raw blocks) raster coloured by sand content
+  const nL=r.nLayers;
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(sectionRaster(G,r,fl.smooth!==false),G.ml,G.mt,G.pw,G.ph);
+  // timelines
+  if(fl.lines){
+    ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=0.8;
+    for(let k=9;k<nL;k+=10){
+      const top=r.horizons[k],th=r.thickness[k];ctx.beginPath();let pen=false;
+      for(let i=0;i<N;i++){
+        if(th[i]>1e-3){if(pen)ctx.lineTo(px[i],gy(G,top[i]));else{ctx.moveTo(px[i],gy(G,top[i]));pen=true;}}
+        else pen=false;
+      }
+      ctx.stroke();
+    }
+  }
+  // water
+  const sl=r.seaLevel,ySl=gy(G,sl);
+  ctx.fillStyle='rgba(79,111,194,.85)';
+  let firstWet=-1;
+  // one polygon per wet stretch (no seams between columns)
+  let i0=0;
+  while(i0<N){
+    while(i0<N&&r.surface[i0]>=sl)i0++;
+    if(i0>=N)break;
+    let i1=i0;while(i1<N&&r.surface[i1]<sl)i1++;
+    if(firstWet<0)firstWet=i0;
+    const a=Math.max(0,i0-1),b=Math.min(N-1,i1);
+    ctx.beginPath();ctx.moveTo(px[a],ySl);
+    for(let i=a;i<=b;i++)ctx.lineTo(px[i],gy(G,Math.min(r.surface[i],sl)));
+    ctx.lineTo(px[b],ySl);ctx.closePath();ctx.fill();
+    i0=i1;
+  }
+  // sea surface line
+  const xs0=firstWet<0?G.ml:px[firstWet];
+  ctx.strokeStyle='#a9c8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(xs0,ySl);ctx.lineTo(G.ml+G.pw,ySl);ctx.stroke();
+  ctx.font='italic 600 12px '+T.body;ctx.fillStyle=T.sea;ctx.textAlign='right';ctx.textBaseline='bottom';
+  ctx.fillText('Sea level',G.ml+G.pw-6,ySl-3);
+  // surfaces
+  if(fl.surf){
+    r.surfaces.forEach(s=>{
+      [[ 'rgba(0,0,0,.35)',3.6],['#ffffff',2]].forEach(([col,w],pass)=>{
+        ctx.strokeStyle=col;ctx.lineWidth=w;ctx.setLineDash(pass?(SURF_DASH[s.type]||[]):[]);
+        if(!pass&&SURF_DASH[s.type].length)ctx.setLineDash(SURF_DASH[s.type]);
+        ctx.beginPath();let pen=false;
+        for(let i=0;i<N;i++){
+          const z=s.z[i];
+          if(z!==z){pen=false;continue;}
+          if(pen)ctx.lineTo(px[i],gy(G,z));else{ctx.moveTo(px[i],gy(G,z));pen=true;}
+        }
+        ctx.stroke();
+      });
+    });
+    ctx.setLineDash([]);
+  }
+  // tract labels
+  if(fl.labels){
+    ctx.font='700 12px '+T.head;ctx.textAlign='center';ctx.textBaseline='middle';
+    const placed=[];
+    r.tracts.forEach(tr=>{
+      if(tr.maxThickness<1)return;
+      const w=ctx.measureText(tr.type).width+12,h=18;
+      const cx=gx(G,tr.labelX),cy0=gy(G,tr.labelZ);
+      let best=null;
+      for(const off of [0,18,-18,36,-36,54,-54]){
+        const b={x:cx-w/2,y:cy0+off-h/2,w,h};
+        if(!placed.some(q=>b.x<q.x+q.w&&b.x+b.w>q.x&&b.y<q.y+q.h&&b.y+b.h>q.y)){best=b;break;}
+      }
+      if(!best)best={x:cx-w/2,y:cy0-h/2,w,h};
+      best.x=Math.max(G.ml+2,Math.min(G.ml+G.pw-w-2,best.x));
+      placed.push(best);
+      ctx.fillStyle='rgba(15,15,12,.62)';rrect(ctx,best.x,best.y,w,h,4);ctx.fill();
+      ctx.fillStyle='#fff';ctx.fillText(tr.type,best.x+w/2,best.y+h/2+0.5);
+    });
+  }
+  ctx.restore();
+  // frame + axes
+  ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.strokeRect(G.ml-.5,G.mt-.5,G.pw+1,G.ph+1);
+  ctx.fillStyle=T.muted;ctx.strokeStyle=T.muted;ctx.font='11px '+T.mono;
+  ctx.textAlign='center';ctx.textBaseline='top';
+  ticks(G.x0/1000,G.x1/1000,G.narrow?5:9).forEach(v=>{
+    const x=gx(G,v*1000);ctx.beginPath();ctx.moveTo(x,G.mt+G.ph);ctx.lineTo(x,G.mt+G.ph+4);ctx.stroke();
+    ctx.fillText(String(v),x,G.mt+G.ph+6);
+  });
+  ctx.textAlign='right';ctx.textBaseline='middle';
+  ticks(G.y0,G.y1,G.narrow?5:7).forEach(v=>{
+    const y=gy(G,v);ctx.beginPath();ctx.moveTo(G.ml-4,y);ctx.lineTo(G.ml,y);ctx.stroke();
+    ctx.fillText(String(v),G.ml-7,y);
+  });
+  ctx.font='600 12.5px '+T.body;ctx.fillStyle=T.ink;ctx.textAlign='center';ctx.textBaseline='bottom';
+  ctx.fillText('Distance (km)',G.ml+G.pw/2,G.plotTotal-1);
+  ctx.save();ctx.translate(12,G.mt+G.ph/2);ctx.rotate(-Math.PI/2);ctx.textBaseline='top';ctx.fillText('Elevation (m)',0,-4);ctx.restore();
+  drawLegend(ctx,G,T);
+}
+
+function drawLegend(ctx,G,T){
+  const y0=G.plotTotal+6;
+  ctx.textBaseline='middle';
+  // surfaces
+  ctx.font='600 12px '+T.body;
+  let x=G.ml,y=y0+12;
+  ctx.fillStyle=T.muted;ctx.textAlign='left';ctx.fillText('Surfaces',x,y);
+  x+=ctx.measureText('Surfaces').width+(G.narrow?8:12);
+  const LW=G.narrow?22:34;
+  const names={SB:'SB',BSFR:'BSFR',TS:'TS',MFS:'MFS',WRS:'WRS'};
+  SURF_ORDER.forEach(t=>{
+    ctx.setLineDash(SURF_DASH[t]);
+    // legend sits on the panel background, so use ink for the stroke
+    ctx.strokeStyle=T.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+LW,y);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=T.ink;ctx.fillText(names[t],x+LW+6,y);
+    x+=LW+6+ctx.measureText(names[t]).width+(G.narrow?10:16);
+  });
+  // colour bar: sand content
+  const barW=G.narrow?G.pw-60:260,barH=12;
+  let bx,by;
+  if(G.narrow){bx=G.ml+8;by=y0+46;}else{bx=G.ml+G.pw-barW-52;by=y0+4;}
+  ctx.font='600 12px '+T.body;ctx.fillStyle=T.muted;ctx.textAlign=G.narrow?'left':'right';
+  if(!G.narrow)ctx.fillText('Sand content',bx-12,by+barH/2);
+  else ctx.fillText('Sand content',G.ml,y0+36);
+  const grad=ctx.createLinearGradient(bx,0,bx+barW,0);
+  SAND_STOPS.forEach((c,i)=>grad.addColorStop(i/(SAND_STOPS.length-1),'rgb('+c.join(',')+')'));
+  ctx.fillStyle=grad;ctx.fillRect(bx,by,barW,barH);
+  ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.strokeRect(bx-.5,by-.5,barW+1,barH+1);
+  const bxs=f=>bx+f/SAND_MAX*barW;
+  ctx.font='10.5px '+T.mono;ctx.fillStyle=T.muted;ctx.textAlign='center';ctx.textBaseline='top';ctx.strokeStyle=T.muted;
+  [0,0.2,0.4,0.6,0.8].forEach(f=>{ctx.beginPath();ctx.moveTo(bxs(f),by+barH);ctx.lineTo(bxs(f),by+barH+3);ctx.stroke();ctx.fillText((f===0.8?'≥':'')+Math.round(f*100)+'%',bxs(f),by+barH+4);});
+  ctx.font='600 11.5px '+T.body;ctx.fillStyle=T.ink;
+  ctx.textAlign='left';ctx.fillText('Mud',bx,by+barH+17);
+  ctx.textAlign='right';ctx.fillText('Sand',bx+barW,by+barH+17);
+}
+
+/* ---------- overlay: wells + hover ---------- */
+function wellLabel(i){return i===0?'A':'B';}
+function drawOverlay(ctx,G,r,hover,wells,T){
+  ctx.clearRect(0,0,G.W,G.H);
+  ctx.save();ctx.beginPath();ctx.rect(G.ml,G.mt,G.pw,G.ph);ctx.clip();
+  wells.forEach((w,idx)=>{
+    const x=gx(G,r.x[w]);
+    ctx.setLineDash([5,3]);ctx.strokeStyle='rgba(0,0,0,.55)';ctx.lineWidth=3.4;ctx.beginPath();ctx.moveTo(x,G.mt);ctx.lineTo(x,G.mt+G.ph);ctx.stroke();
+    ctx.strokeStyle='#ffffff';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(x,G.mt);ctx.lineTo(x,G.mt+G.ph);ctx.stroke();ctx.setLineDash([]);
+  });
+  ctx.restore();
+  wells.forEach((w,idx)=>{
+    const x=gx(G,r.x[w]);
+    ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=1;
+    rrect(ctx,x-10,G.mt+3,20,18,4);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#1a1a16';ctx.font='700 13px '+T.head;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(wellLabel(idx),x,G.mt+12.5);
+  });
+  if(hover){
+    ctx.save();ctx.beginPath();ctx.rect(G.ml,G.mt,G.pw,G.ph);ctx.clip();
+    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=1;
+    ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(hover.px,G.mt);ctx.lineTo(hover.px,G.mt+G.ph);ctx.moveTo(G.ml,hover.py);ctx.lineTo(G.ml+G.pw,hover.py);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#fff';ctx.strokeStyle='#000';ctx.beginPath();ctx.arc(hover.px,hover.py,3.5,0,6.283);ctx.fill();ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* ---------- lookup ---------- */
+function lookup(r,xm,z){
+  const N=r.x.length;
+  const i=Math.max(0,Math.min(N-1,Math.floor(xm/r.dx)));
+  for(let k=r.nLayers-1;k>=0;k--){
+    const top=r.horizons[k][i],bot=k?r.horizons[k-1][i]:r.basement[i];
+    if(top-bot>1e-3&&z<=top&&z>=bot){
+      return {i,k,phi:r.phi[k][i],sand:r.sandFraction[k][i],tract:r.tractByLayer[k],t:r.history.t[k]};
+    }
+  }
+  if(z<r.basement[i])return {i,base:true};
+  return {i,none:true,water:z<r.seaLevel&&z>=r.surface[i]};
+}
+function updateReadout(h){
+  const el=$('readout');
+  if(!h){el.innerHTML='<span class="hint">Hover the section to read sand content and systems tract; click to place a pseudo-well.</span>';return;}
+  let s='<div class="kv"><span class="k">x</span><b>'+(h.xm/1000).toFixed(1)+' km</b></div>'+
+        '<div class="kv"><span class="k">Elevation</span><b>'+h.z.toFixed(1)+' m</b></div>';
+  const L=h.hit;
+  if(L.k!==undefined){
+    s+='<div class="kv"><span class="k">Sand</span><b><span class="sw" style="background:'+sandColor(L.sand)+'"></span>'+Math.round(100*L.sand)+'%</b></div>'+
+       '<div class="kv"><span class="k">Mean grain size</span><b>φ '+L.phi.toFixed(1)+' ('+grainClass(L.phi).toLowerCase()+')</b></div>'+
+       ($('optExercise').checked?'':'<div class="kv"><span class="k">Tract</span><b>'+(TRACT_NAME[L.tract]||L.tract)+'</b></div>')+
+       '<div class="kv"><span class="k">Age</span><b>'+(L.t/1000).toFixed(0)+' ka</b></div>';
+  } else s+='<div class="kv"><span class="k">Here</span><b>'+(L.base?'Basement':(L.water?'Sea water':'Air'))+'</b></div>';
+  el.innerHTML=s;
+}
+
+/* ---------- wells panel ---------- */
+function drawWells(ctx,W,H,r,wells,T){
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=T.surface;ctx.fillRect(0,0,W,H);
+  // datum: top of basement = 0 in every well; shared scale so wells compare directly
+  let maxT=5;
+  wells.forEach(w=>{if(w!==undefined)maxT=Math.max(maxT,r.surface[w]-r.basement[w]);});
+  const tk0=ticks(0,maxT*1.05,6),y1=Math.max(tk0[tk0.length-1],maxT*1.05),y0=-y1*0.05;
+  const gap=W<560?10:24,pw=(W-gap)/2,top=28,bot=H-26;
+  for(let s=0;s<2;s++){
+    const ox=s*(pw+gap),ml=40,mr=14,bw=pw-ml-mr-10;
+    const zy=z=>top+(y1-z)/(y1-y0)*(bot-top);
+    ctx.save();ctx.beginPath();ctx.rect(ox,0,pw,H);ctx.clip();
+    ctx.fillStyle=T.plotBg;ctx.fillRect(ox+ml,top,pw-ml-mr,bot-top);
+    // axis
+    ctx.font='11px '+T.mono;ctx.fillStyle=T.muted;ctx.strokeStyle=T.muted;ctx.lineWidth=1;ctx.textAlign='right';ctx.textBaseline='middle';
+    ticks(0,y1,6).forEach(v=>{ctx.beginPath();ctx.moveTo(ox+ml-4,zy(v));ctx.lineTo(ox+ml,zy(v));ctx.stroke();ctx.fillText(String(v),ox+ml-7,zy(v));});
+    ctx.strokeStyle=T.line;ctx.strokeRect(ox+ml-.5,top-.5,pw-ml-mr+1,bot-top+1);
+    const w=wells[s];
+    ctx.textAlign='left';ctx.textBaseline='middle';
+    if(w===undefined){
+      ctx.fillStyle=T.muted;ctx.font='13px '+T.body;ctx.textAlign='center';
+      ctx.fillText(pw<260?'Click section':'Click the section to place well '+wellLabel(s),ox+ml+(pw-ml-mr)/2,(top+bot)/2);
+      ctx.font='600 14px '+T.head;ctx.textAlign='left';ctx.fillText('Well '+wellLabel(s),ox+ml,14);
+    }else{
+      ctx.fillStyle=T.ink;ctx.font='600 14px '+T.head;
+      ctx.fillText(pw<260?wellLabel(s)+' · '+(r.x[w]/1000).toFixed(1)+' km':'Well '+wellLabel(s)+'  ·  x = '+(r.x[w]/1000).toFixed(1)+' km',ox+ml,14);
+      ctx.save();ctx.beginPath();ctx.rect(ox+ml,top,pw-ml-mr,bot-top);ctx.clip();
+      // basement
+      const b0=r.basement[w];
+      ctx.fillStyle='#45473d';ctx.fillRect(ox+ml,zy(0),pw-ml-mr,bot);
+      for(let k=0;k<r.nLayers;k++){
+        const tp=r.horizons[k][w]-b0,bt=(k?r.horizons[k-1][w]:b0)-b0;
+        if(tp-bt<1e-3)continue;
+        const sf=r.sandFraction[k][w];if(sf!==sf)continue;
+        const wd=bw*Math.max(.06,Math.min(1,sf/SAND_MAX));
+        const yt=zy(tp),yb=zy(bt);
+        ctx.fillStyle=sandColor(sf);ctx.fillRect(ox+ml+2,yt,wd,Math.max(.8,yb-yt));
+        if(!$('optExercise').checked){ctx.fillStyle=TRACT_COL[r.tractByLayer[k]]||'#888';ctx.fillRect(ox+ml+2+bw+3,yt,5,Math.max(.8,yb-yt));}
+      }
+      // sea level
+      ctx.restore();
+    }
+    ctx.fillStyle=T.muted;ctx.font='11.5px '+T.body;ctx.textAlign='left';ctx.textBaseline='middle';
+    ctx.fillText(pw<260?'wider = sandier':'wider bar = more sand',ox+ml,H-10);
+    if(pw>=260&&!$('optExercise').checked){ctx.textAlign='right';ctx.fillText('tract',ox+pw-mr,H-10);}
+    ctx.restore();
+  }
+  ctx.save();ctx.translate(10,(top+bot)/2);ctx.rotate(-Math.PI/2);ctx.fillStyle=T.ink;ctx.font='600 11.5px '+T.body;ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText('Height above basement (m)',0,-6);ctx.restore();
+}
+
+/* ---------- time chart ---------- */
+function drawTime(ctx,W,H,r,fl,T){
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=T.surface;ctx.fillRect(0,0,W,H);
+  const narrow=W<560,ml=narrow?46:58,mr=12,top=narrow?60:54,bottom=narrow?36:40,gapP=22;
+  const hp=(H-top-bottom-gapP)/2,pw=W-ml-mr;
+  const hist=r.history,dur=r.params.duration/1000;
+  const tx=t=>ml+t/dur*pw;
+  const T_ = hist.t.map(t=>t/1000);
+  const eu=hist.eustasy,sh=hist.shorelineX.map(v=>v/1000);
+  function rng(a,minSpan){let lo=Math.min.apply(null,a),hi=Math.max.apply(null,a);if(hi-lo<minSpan){const m=(hi+lo)/2;lo=m-minSpan/2;hi=m+minSpan/2;}const p=(hi-lo)*.08;return [lo-p,hi+p];}
+  const plots=[
+    {y:top,lab:'(a) Eustatic sea level',unit:'Sea level (m)',data:eu,r:rng(eu,4)},
+    {y:top+hp+gapP,lab:'(b) Shoreline position',unit:'Shoreline (km)',data:sh,r:rng(sh,6)}
+  ];
+  const showBands=!fl.exercise;
+  // legend
+  ctx.textBaseline='middle';ctx.font='600 12px '+T.body;
+  if(showBands){
+    let x=ml,y=13;ctx.textAlign='left';
+    ['FSST','LST','TST','HST'].forEach(t=>{
+      ctx.fillStyle=TRACT_COL[t];ctx.globalAlpha=T.dark?.55:.5;ctx.fillRect(x,y-6,16,12);ctx.globalAlpha=1;
+      ctx.strokeStyle=TRACT_COL[t];ctx.strokeRect(x+.5,y-5.5,15,11);
+      ctx.fillStyle=T.ink;ctx.fillText(t,x+21,y);x+=21+ctx.measureText(t).width+16;
+    });
+  }else{
+    ctx.fillStyle=T.muted;ctx.textAlign='left';ctx.fillText('Systems tracts and surfaces hidden in exercise mode',ml,13);
+  }
+  plots.forEach(P=>{
+    const [a,b]=P.r,py=v=>P.y+(b-v)/(b-a)*hp;
+    ctx.fillStyle=T.plotBg;ctx.fillRect(ml,P.y,pw,hp);
+    if(showBands)r.tracts.forEach(tr=>{
+      ctx.fillStyle=TRACT_COL[tr.type];ctx.globalAlpha=T.dark?.28:.24;
+      ctx.fillRect(tx(tr.startTime/1000),P.y,tx(tr.endTime/1000)-tx(tr.startTime/1000),hp);ctx.globalAlpha=1;
+    });
+    // grid + y ticks
+    ctx.font='11px '+T.mono;ctx.textAlign='right';ctx.textBaseline='middle';
+    ticks(a,b,4).forEach(v=>{
+      const y=py(v);ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ml,y);ctx.lineTo(ml+pw,y);ctx.stroke();
+      ctx.fillStyle=T.muted;ctx.fillText(String(+v.toFixed(2)),ml-6,y);
+    });
+    // surface lines
+    if(showBands){
+      ctx.save();ctx.beginPath();ctx.rect(ml,P.y,pw,hp);ctx.clip();
+      r.surfaces.filter(s=>s.type!=='WRS').forEach(s=>{
+        const x=tx(s.time/1000);ctx.setLineDash(SURF_DASH[s.type]);ctx.strokeStyle=T.ink;ctx.globalAlpha=.7;ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(x,P.y);ctx.lineTo(x,P.y+hp);ctx.stroke();ctx.globalAlpha=1;
+      });
+      ctx.restore();ctx.setLineDash([]);
+    }
+    // data
+    ctx.strokeStyle=T.accent;ctx.lineWidth=2;ctx.lineJoin='round';ctx.beginPath();
+    P.data.forEach((v,i)=>{const x=tx(T_[i]),y=py(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();
+    ctx.strokeStyle=T.line;ctx.strokeRect(ml-.5,P.y-.5,pw+1,hp+1);
+    ctx.fillStyle=T.ink;ctx.font='600 12px '+T.body;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(P.lab,ml+6,P.y+4);
+    ctx.save();ctx.translate(11,P.y+hp/2);ctx.rotate(-Math.PI/2);ctx.fillStyle=T.muted;ctx.font='11.5px '+T.body;ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(P.unit,0,-3);ctx.restore();
+  });
+  // surface labels above plot a
+  if(showBands){
+    ctx.font='700 11px '+T.head;ctx.textAlign='center';ctx.textBaseline='bottom';
+    const used=[];
+    r.surfaces.filter(s=>s.type!=='WRS').slice().sort((p,q)=>p.time-q.time).forEach(s=>{
+      const x=tx(s.time/1000);let row=0;
+      while(used.some(u=>u.row===row&&Math.abs(u.x-x)<34))row++;
+      used.push({x,row});
+      ctx.fillStyle=T.ink;ctx.fillText(s.type,x,top-3-row*12);
+    });
+  }
+  // x axis
+  const by=plots[1].y+hp;
+  ctx.font='11px '+T.mono;ctx.fillStyle=T.muted;ctx.strokeStyle=T.muted;ctx.textAlign='center';ctx.textBaseline='top';
+  ticks(0,dur,narrow?5:10).forEach(v=>{ctx.beginPath();ctx.moveTo(tx(v),by);ctx.lineTo(tx(v),by+4);ctx.stroke();ctx.fillText(String(v),tx(v),by+6);});
+  ctx.font='600 12.5px '+T.body;ctx.fillStyle=T.ink;ctx.textBaseline='bottom';ctx.fillText('Time (ka)',ml+pw/2,H-2);
+}
+
+/* ---------- rendering orchestration ---------- */
+function secSize(){return Math.max(280,$('secWrap').clientWidth);}
+function renderSection(){
+  const r=S.r;if(!r)return;
+  const W=secSize(),G=layoutSection(W,r);S.secGeo=G;
+  const ctx=fitCanvas($('secBase'),G.W,G.H);
+  drawSection(ctx,G,r,flags(),theme());
+  const oc=fitCanvas($('secOver'),G.W,G.H);
+  drawOverlay(oc,G,r,S.hover,S.wells,theme());
+}
+function renderOverlay(){
+  const r=S.r,G=S.secGeo;if(!r||!G)return;
+  const oc=$('secOver').getContext('2d');
+  drawOverlay(oc,G,r,S.hover,S.wells,theme());
+}
+function renderWells(){
+  const r=S.r;if(!r)return;
+  const W=Math.max(280,$('wellWrap').clientWidth),H=W<560?260:300;
+  drawWells(fitCanvas($('wellCv'),W,H),W,H,r,S.wells,theme());
+}
+function renderTime(){
+  const r=S.r;if(!r)return;
+  const W=Math.max(280,$('timeWrap').clientWidth),H=W<560?330:Math.min(400,Math.round(W*.36)+40);
+  drawTime(fitCanvas($('timeCv'),W,H),W,H,r,flags(),theme());
+}
+function wheelerOpts(){const fl=flags();return {xView:viewRange(S.r),showSurfaces:fl.surf,showShoreline:true,exercise:fl.exercise};}
+function renderWheeler(){
+  const r=S.r;if(!r||typeof drawWheeler!=='function')return;
+  const W=Math.max(280,$('wheelWrap').clientWidth),H=W<560?380:Math.min(520,Math.round(W*.45)+60);
+  drawWheeler(fitCanvas($('wheelCv'),W,H),W,H,r,wheelerOpts(),theme());
+}
+function renderAll(){renderSection();renderWheeler();renderWells();renderTime();}
+let rt=0;
+function scheduleResize(){cancelAnimationFrame(rt);rt=requestAnimationFrame(renderAll);}
+new ResizeObserver(scheduleResize).observe($('secWrap'));
+new ResizeObserver(scheduleResize).observe($('wellWrap'));
+new ResizeObserver(scheduleResize).observe($('timeWrap'));
+new ResizeObserver(scheduleResize).observe($('wheelWrap'));
+$('wheelCv').addEventListener('mousemove',e=>{
+  const r=S.r;if(!r||typeof wheelerHitTest!=='function')return;
+  const b=$('wheelCv').getBoundingClientRect();
+  const h=wheelerHitTest(r,wheelerOpts(),b.width,b.height,e.clientX-b.left,e.clientY-b.top);
+  const el=$('wheelReadout');
+  if(!h){el.innerHTML='<span class="hint">Hover the diagram to read time, distance and what is preserved.</span>';return;}
+  const what=h.state==='preserved'?'Sediment preserved':'Gap: nothing preserved from this time';
+  let s='<div class="kv"><span class="k">Time</span><b>'+h.timeKa.toFixed(0)+' ka</b></div><div class="kv"><span class="k">x</span><b>'+h.xKm.toFixed(1)+' km</b></div><div class="kv"><span class="k">Record</span><b>'+what+'</b></div>';
+  if(h.state==='preserved'&&h.sand===h.sand)s+='<div class="kv"><span class="k">Sand</span><b><span class="sw" style="background:'+sandColor(h.sand)+'"></span>'+Math.round(100*h.sand)+'%</b></div>';
+  el.innerHTML=s;
+});
+$('wheelCv').addEventListener('mouseleave',()=>{$('wheelReadout').innerHTML='<span class="hint">Hover the diagram to read time, distance and what is preserved.</span>';});
+window.addEventListener('resize',scheduleResize);
+try{window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',renderAll);}catch(e){}
+new MutationObserver(renderAll).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(S.r)renderAll();});
+
+/* ---------- interaction ---------- */
+function pointerInfo(e){
+  const G=S.secGeo,r=S.r;if(!G||!r)return null;
+  const rc=$('secOver').getBoundingClientRect();
+  const px=e.clientX-rc.left,py=e.clientY-rc.top;
+  if(px<G.ml||px>G.ml+G.pw||py<G.mt||py>G.mt+G.ph)return null;
+  const xm=G.x0+(px-G.ml)/G.pw*(G.x1-G.x0),z=G.y1-(py-G.mt)/G.ph*(G.y1-G.y0);
+  return {px,py,xm,z,hit:lookup(r,xm,z)};
+}
+function onMove(e){
+  const h=pointerInfo(e);S.hover=h;updateReadout(h);
+  cancelAnimationFrame(S.rafOver);S.rafOver=requestAnimationFrame(renderOverlay);
+}
+const ov=$('secOver');
+ov.addEventListener('pointermove',onMove);
+ov.addEventListener('pointerdown',onMove);
+ov.addEventListener('pointerleave',()=>{S.hover=null;updateReadout(null);renderOverlay();});
+ov.addEventListener('click',e=>{
+  const h=pointerInfo(e);if(!h)return;
+  const i=h.hit.i;
+  if(S.wells.indexOf(i)>=0)return;
+  if(S.wells.length<2){S.wells.push(i);}
+  else{ // replace nearest
+    const d=S.wells.map(w=>Math.abs(w-i));S.wells[d[0]<=d[1]?0:1]=i;
+  }
+  S.wells.sort((a,b)=>a-b);
+  renderOverlay();renderWells();
+});
+$('clearWells').addEventListener('click',()=>{S.wells=[];renderOverlay();renderWells();});
+
+/* ---------- run ---------- */
+let timer=0;
+function schedule(){
+  clearTimeout(timer);timer=setTimeout(run,0);
+}
+/* the model runs in a background thread when the browser allows it; otherwise on the page */
+let worker=null,runId=0,workerOK=true;
+function getWorker(){
+  if(!workerOK||typeof Worker==='undefined')return null;
+  if(worker)return worker;
+  try{worker=new Worker('worker.js');worker.onerror=()=>{workerOK=false;worker=null;};}catch(e){workerOK=false;worker=null;}
+  return worker;
+}
+function finishRun(r,ms,err){
+  $('pill').classList.remove('on');$('pill').textContent='Running\u2026';
+  if(err){$('status').textContent='Model error: '+err;return;}
+  S.r=r;S.ms=ms;
+  const nSeq=r.surfaces.filter(s=>s.type==='SB').length;
+  $('status').textContent='Run time '+Math.round(ms)+' ms · mass balance error '+r.massBalance.error.toExponential(1)+' · '+nSeq+' sequence'+(nSeq===1?'':'s')+' (SB count) · '+r.nLayers+' layers · far-edge sediment '+(100*r.edgeFraction).toFixed(1)+'% · exported to deep basin '+(100*(r.exportedFraction||0)).toFixed(1)+'%';
+  $('edgeWarn').hidden=!(r.edgeFraction>0.02);
+  $('secBase').setAttribute('aria-label','Cross-section, '+r.tracts.map(t=>t.type).join(', ')+' tracts');
+  {const xv=viewRange(r,true);
+    if(S.wells.some(w=>r.x[w]>xv)){
+      const n=S.wells.length,fr=n>1?[0.4,0.75]:[0.5];
+      S.wells=fr.map(f=>Math.min(r.x.length-1,Math.floor(f*xv/r.dx)));
+    }}
+  S.hover=null;updateReadout(null);
+  renderAll();
+}
+function runOnPage(prm){
+  requestAnimationFrame(()=>setTimeout(()=>{
+    let r,err=null;const t0=performance.now();
+    try{r=SeqStrat.simulate(prm);}catch(e){err=e.message;}
+    finishRun(r,performance.now()-t0,err);
+  },30));
+}
+function run(){
+  $('pill').classList.add('on');$('pill').textContent='Running\u2026';
+  const prm=params(),id=++runId,w=getWorker();
+  if(!w){runOnPage(prm);return;}
+  let started=false;
+  const fallback=setTimeout(()=>{if(!started&&id===runId){workerOK=false;try{w.terminate();}catch(e){}worker=null;runOnPage(prm);}},4000);
+  w.onmessage=(e)=>{
+    const m=e.data;if(m.id!==runId)return;
+    started=true;
+    if(m.progress!==undefined){$('pill').textContent='Running '+Math.round(100*m.progress)+'%';return;}
+    clearTimeout(fallback);
+    finishRun(m.result,m.ms,m.error||null);
+  };
+  w.onerror=()=>{clearTimeout(fallback);workerOK=false;worker=null;if(id===runId)runOnPage(prm);};
+  w.postMessage({id,params:prm});
+}
+function setDirty(on){$('dirty').hidden=!on;$('runBtn').classList.toggle('stale',on);}
+CTL.forEach(c=>c.input.addEventListener('input',()=>{
+  c.out.textContent=fmtVal(c,c.input.value);$('preset').value='custom';setDirty(true);
+}));
+$('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
+$('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
+$('resetBtn').addEventListener('click',()=>{$('preset').value='default';applyPreset('default');setDirty(false);schedule();});
+['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{renderSection();renderWheeler();}));
+function syncExercise(){
+  $('banner').hidden=!$('optExercise').checked;
+  ['optSurf','optLabels'].forEach(id=>{});
+  renderSection();renderTime();renderWheeler();renderWells();
+}
+$('optExercise').addEventListener('change',syncExercise);
+$('revealBtn').addEventListener('click',()=>{$('optExercise').checked=false;syncExercise();});
+
+/* ---------- copy / export ---------- */
+$('copyBtn').addEventListener('click',()=>{
+  const txt=JSON.stringify(params(),null,2),box=$('jsonBox'),msg=$('copyMsg');
+  const fallback=()=>{box.value=txt;box.classList.add('on');box.focus();box.select();msg.textContent='Clipboard unavailable. Copy the settings below (Ctrl/Cmd+C).';};
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(()=>{box.classList.remove('on');msg.textContent='Run settings copied to clipboard.';},fallback);
+    }else fallback();
+  }catch(e){fallback();}
+});
+$('exportBtn').addEventListener('click',()=>{
+  const r=S.r;if(!r)return;
+  const W=1400,G=layoutSection(W,r),T=theme(),d=Math.min(2,Math.max(1,window.devicePixelRatio||1));
+  const cv=document.createElement('canvas');cv.width=Math.round(W*d);cv.height=Math.round(G.H*d);
+  const ctx=cv.getContext('2d');ctx.setTransform(d,0,0,d,0,0);
+  drawSection(ctx,G,r,flags(),T);
+  drawOverlay(ctx,G,r,null,S.wells,T);
+  $('expImg').src=cv.toDataURL('image/png');
+  const dlg=$('expDlg');
+  try{dlg.showModal();}catch(e){dlg.setAttribute('open','');}
+});
+$('expClose').addEventListener('click',()=>{const dlg=$('expDlg');try{dlg.close();}catch(e){dlg.removeAttribute('open');}});
+
+/* ---------- init ---------- */
+applyUI(defaultsUI());
+$('preset').value='default';
+updateReadout(null);
+run();
+})();
+</script>
+
+</body>
+</html>
