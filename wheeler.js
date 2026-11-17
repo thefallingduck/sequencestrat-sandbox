@@ -5,7 +5,8 @@
 'use strict';
 var SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
 var SURF_SHOW=['SB','BSFR','TS','MFS'];
-var EPS=0.01; // m: ignore sub-centimetre cut-and-fill
+var EPS=0.01; // m: net surface change below this counts as none
+var MIN_RATE_DEFAULT=0.2; // mm/kyr: preserved accumulation slower than this is drawn as a gap
 var C_REMOVED=[196,196,192], C_HATCH=[132,132,128], C_ERODING=[128,128,124];
 var C_ERODING_D=[96,96,94], C_REMOVED_D=[110,110,108], C_HATCH_D=[160,160,156];
 
@@ -18,8 +19,10 @@ function sandRGB(f){return (typeof window.sandRGB==='function'?window.sandRGB:fa
 
 /* state codes: 0 hiatus, 1 preserved, 2 removed, 3 eroding */
 var cache=new WeakMap();
-function classify(r){
-  var c=cache.get(r); if(c) return c;
+function classify(r,minRate){
+  if(!(minRate>=0)) minRate=MIN_RATE_DEFAULT;
+  var byRate=cache.get(r); if(!byRate){byRate={}; cache.set(r,byRate);}
+  var c=byRate[minRate]; if(c) return c;
   /* Group layers into time bins (>= 3 kyr, ~100 rows per diagram) so flood-pulse cut-and-fill
      at single-layer resolution does not dominate. Each bin is classified by what it left:
      preserved sediment, or else its net surface change (deposited-then-removed, eroding, hiatus). */
@@ -34,7 +37,8 @@ function classify(r){
       var pres=0, ps_=0;
       for(var k=k0;k<=k1;k++){var tk=th[k][i]; if(tk>0){var f=sf[k][i]; pres+=tk; if(f===f) ps_+=tk*f;}}
       var s, fs=pres>0?ps_/pres:NaN;
-      if(pres>EPS) s=1;
+      var dtKyr=(t[k1]-(k0>0?t[k0-1]:0))/1000;
+      if(pres>0 && pres*1000/dtKyr>=minRate) s=1;  // preserved at or above the minimum rate (mm/kyr)
       else{
         var before=k0>0?ps[k0-1][i]:(ps[0][i]-th[0][i]);
         var dz=ps[k1][i]-before+sub[i]*dtB;
@@ -43,7 +47,7 @@ function classify(r){
       for(k=k0;k<=k1;k++){st[k*N+i]=s; sand[k*N+i]=fs;}
     }
   }
-  c={st:st,sand:sand,N:N,K:K,bin:bin}; cache.set(r,c); return c;
+  c={st:st,sand:sand,N:N,K:K,bin:bin,minRate:minRate}; byRate[minRate]=c; return c;
 }
 
 function layout(W,H,opts){
@@ -85,7 +89,7 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   var cv=window.__wheelerCv||(window.__wheelerCv=document.createElement('canvas'));
   cv.width=iw; cv.height=ih;
   var c2=cv.getContext('2d'), img=c2.createImageData(iw,ih), d=img.data;
-  var cl=classify(r), st=cl.st, N=cl.N, sand=cl.sand;
+  var cl=classify(r,opts&&opts.minRate), st=cl.st, N=cl.N, sand=cl.sand;
   var colOf=new Int32Array(iw), kOf=new Int32Array(ih);
   for(var px=0;px<iw;px++) colOf[px]=colAt(r,(px+.5)/iw*xView,xView);
   for(var py=0;py<ih;py++) kOf[py]=layerAt(r,(1-(py+.5)/ih)*dur);
@@ -177,7 +181,7 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   var long=!L.narrow;
   var items=[
     {k:'p',t:long?'Preserved sediment (colour = sand content)':'Preserved (sand content)'},
-    {k:'h',t:long?'Gap: no sediment preserved from this time':'Gap (nothing preserved)'}];
+    {k:'h',t:long?'Gap: less than 0.2 mm/kyr preserved':'Gap (<0.2 mm/kyr)'}];
   ctx.font='11.5px '+body; ctx.textBaseline='middle'; ctx.textAlign='left';
   var lx0=ml, ly0=L.narrow?10:11, sw=14, x0=lx0, y0=ly0;
   items.forEach(function(it){
@@ -212,7 +216,7 @@ window.wheelerHitTest=function(r,opts,W,H,cx,cy){
   if(cx<L.ml||cx>=L.ml+L.pw||cy<L.mt||cy>=L.mt+L.ph) return null;
   var xView=opts.xView||r.x[r.x.length-1], dur=r.params.duration;
   var xm=(cx-L.ml)/L.pw*xView, tyr=(1-(cy-L.mt)/L.ph)*dur;
-  var i=colAt(r,xm,xView), k=layerAt(r,tyr), cl=classify(r), s=cl.st[k*cl.N+i];
+  var i=colAt(r,xm,xView), k=layerAt(r,tyr), cl=classify(r,opts&&opts.minRate), s=cl.st[k*cl.N+i];
   var f=cl.sand[k*cl.N+i];
   return {xKm:xm/1000,timeKa:tyr/1000,
     state:['hiatus','preserved','removed','eroding'][s],

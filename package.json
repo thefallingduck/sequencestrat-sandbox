@@ -1,0 +1,10 @@
+{
+  "name": "sequencestrat-sandbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser-based 2D sequence stratigraphy teaching model (GY 306 W)",
+  "scripts": {
+    "test": "node --test tests/engine.test.js"
+  },
+  "license": "UNLICENSED"
+}
