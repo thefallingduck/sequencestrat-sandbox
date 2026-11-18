@@ -57,6 +57,9 @@ h1{font:600 clamp(26px,4vw,36px)/1.05 var(--f-head);margin:0 0 4px;letter-spacin
 .banner[hidden]{display:none}
 .wells-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .wells-head h2{margin:0}
+.well-legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:13px;color:var(--muted);align-items:center}
+.well-legend .k{font:600 11px var(--f-head);text-transform:uppercase;letter-spacing:.08em}
+.well-legend .tsw{display:inline-block;width:6px;height:14px;border-radius:1px;vertical-align:-2px;margin-right:6px}
 button,select{font:500 14px var(--f-body);color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;min-height:36px}
 button:hover{border-color:var(--accent)}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
@@ -190,6 +193,7 @@ dialog p{margin:0 0 10px}
       <section class="card" aria-label="Pseudo-wells">
         <div class="wells-head"><h2>Pseudo-wells: sand-content logs</h2><button id="clearWells" type="button">Clear wells</button></div>
         <div class="cv-wrap" id="wellWrap"><canvas id="wellCv" role="img" aria-label="Grain-size logs of placed wells"></canvas></div>
+        <div class="well-legend" id="wellLegend"></div>
       </section>
 
       <section class="card" aria-label="Time chart">
@@ -635,16 +639,63 @@ function updateReadout(h){
 }
 
 /* ---------- wells panel ---------- */
-function drawWells(ctx,W,H,r,wells,T){
+/* Surfaces that cross well column w, grouped so lines closer than minPx on screen share
+   one label ("SB/TS"). Each group: {y (px), h (m above basement), types:[...], items:[...]},
+   sorted top to bottom. Heights come from s.z, the same values the dip section draws
+   (s.z[w] = r.horizons[s.layer][w] for SB, BSFR, TS and MFS; WRS has its own cut surface). */
+function wellSurfaceGroups(r,w,zy,minPx){
+  const b0=r.basement[w],items=[];
+  r.surfaces.forEach(s=>{
+    const z=s.z[w];if(z!==z)return;
+    items.push({s,h:z-b0,y:zy(z-b0)});
+  });
+  items.sort((a,b)=>a.y-b.y||a.s.time-b.s.time);
+  const groups=[];
+  items.forEach(it=>{
+    const g=groups[groups.length-1];
+    if(g&&it.y-g.items[g.items.length-1].y<minPx)g.items.push(it);
+    else groups.push({items:[it]});
+  });
+  groups.forEach(g=>{
+    g.items.sort((a,b)=>a.s.time-b.s.time);   // oldest first, e.g. SB/TS
+    g.types=[];g.items.forEach(it=>{if(g.types.indexOf(it.s.type)<0)g.types.push(it.s.type);});
+    g.y=g.items.reduce((a,it)=>a+it.y,0)/g.items.length;
+    g.h=g.items.reduce((a,it)=>a+it.h,0)/g.items.length;
+  });
+  return groups;
+}
+/* same look as the dip section: dark halo, then white line in the surface's dash */
+function strokeSurface(ctx,type,x0,x1,y){
+  [['rgba(0,0,0,.35)',3.6],['#ffffff',2]].forEach(([col,w])=>{
+    ctx.strokeStyle=col;ctx.lineWidth=w;ctx.setLineDash(SURF_DASH[type]||[]);
+    ctx.beginPath();ctx.moveTo(x0,y);ctx.lineTo(x1,y);ctx.stroke();
+  });
+  ctx.setLineDash([]);
+}
+function drawWells(ctx,W,H,r,wells,T,fl){
+  fl=fl||flags();
   ctx.clearRect(0,0,W,H);ctx.fillStyle=T.surface;ctx.fillRect(0,0,W,H);
   // datum: top of basement = 0 in every well; shared scale so wells compare directly
   let maxT=5;
   wells.forEach(w=>{if(w!==undefined)maxT=Math.max(maxT,r.surface[w]-r.basement[w]);});
   const tk0=ticks(0,maxT*1.05,6),y1=Math.max(tk0[tk0.length-1],maxT*1.05),y0=-y1*0.05;
   const gap=W<560?10:24,pw=(W-gap)/2,top=28,bot=H-26;
+  const zy=z=>top+(y1-z)/(y1-y0)*(bot-top);
+  // room on the right of each log for surface labels (only when surfaces are shown);
+  // at most about a third of the panel, so the sand log keeps most of the width.
+  // Combined labels that do not fit are wrapped at the slashes.
+  ctx.font='700 11px '+T.head;
+  const maxLab=Math.max(34,Math.round(pw*0.34)-16);
+  const wrapLabel=types=>{const lines=[];let cur='';
+    types.forEach((t,j)=>{const piece=t+(j<types.length-1?'/':'');
+      if(cur&&ctx.measureText(cur+piece).width>maxLab){lines.push(cur);cur=piece;}else cur+=piece;});
+    if(cur)lines.push(cur);return lines;};
+  let labW=0;
+  if(fl.surf)wells.forEach(w=>{if(w===undefined)return;
+    wellSurfaceGroups(r,w,zy,2).forEach(g=>wrapLabel(g.types).forEach(l=>{labW=Math.max(labW,ctx.measureText(l).width);}));});
+  const gut=labW?Math.ceil(labW)+16:0;
   for(let s=0;s<2;s++){
-    const ox=s*(pw+gap),ml=40,mr=14,bw=pw-ml-mr-10;
-    const zy=z=>top+(y1-z)/(y1-y0)*(bot-top);
+    const ox=s*(pw+gap),ml=40,mr=14+gut,bw=pw-ml-mr-10;
     ctx.save();ctx.beginPath();ctx.rect(ox,0,pw,H);ctx.clip();
     ctx.fillStyle=T.plotBg;ctx.fillRect(ox+ml,top,pw-ml-mr,bot-top);
     // axis
@@ -671,14 +722,33 @@ function drawWells(ctx,W,H,r,wells,T){
         const wd=bw*Math.max(.06,Math.min(1,sf/SAND_MAX));
         const yt=zy(tp),yb=zy(bt);
         ctx.fillStyle=sandColor(sf);ctx.fillRect(ox+ml+2,yt,wd,Math.max(.8,yb-yt));
-        if(!$('optExercise').checked){ctx.fillStyle=TRACT_COL[r.tractByLayer[k]]||'#888';ctx.fillRect(ox+ml+2+bw+3,yt,5,Math.max(.8,yb-yt));}
+        if(!fl.exercise){ctx.fillStyle=TRACT_COL[r.tractByLayer[k]]||'#888';ctx.fillRect(ox+ml+2+bw+3,yt,5,Math.max(.8,yb-yt));}
       }
-      // sea level
       ctx.restore();
+      // surfaces: a line across the log at each surface's height, labelled at the side
+      if(fl.surf){
+        const groups=wellSurfaceGroups(r,w,zy,2),xr=ox+pw-mr,LH=13;
+        ctx.save();ctx.beginPath();ctx.rect(ox+ml,top-2,pw-ml-mr,bot-top+4);ctx.clip();
+        groups.forEach(g=>g.items.forEach(it=>strokeSurface(ctx,it.s.type,ox+ml,xr,it.y)));
+        ctx.restore();
+        // labels: centred on their line where possible, never overlapping, inside the plot height
+        ctx.font='700 11px '+T.head;ctx.textAlign='left';ctx.textBaseline='middle';
+        const lab=groups.map(g=>wrapLabel(g.types)),hh=lab.map(l=>l.length*LH);
+        const ly=groups.map(g=>g.y);   // label centres
+        for(let j=0;j<ly.length;j++)ly[j]=Math.max(ly[j],j?ly[j-1]+(hh[j-1]+hh[j])/2:top+hh[j]/2);
+        for(let j=ly.length-1;j>=0;j--)ly[j]=Math.min(ly[j],j===ly.length-1?bot-hh[j]/2:ly[j+1]-(hh[j]+hh[j+1])/2);
+        groups.forEach((g,j)=>{
+          const lx=xr+10;
+          ctx.strokeStyle=T.muted;ctx.lineWidth=1;ctx.beginPath();
+          ctx.moveTo(xr+1,g.y);ctx.lineTo(xr+5,g.y);ctx.lineTo(lx-2,ly[j]);ctx.stroke();
+          ctx.fillStyle=T.ink;
+          lab[j].forEach((l,m)=>ctx.fillText(l,lx,ly[j]-hh[j]/2+LH/2+m*LH));
+        });
+      }
     }
     ctx.fillStyle=T.muted;ctx.font='11.5px '+T.body;ctx.textAlign='left';ctx.textBaseline='middle';
     ctx.fillText(pw<260?'wider = sandier':'wider bar = more sand',ox+ml,H-10);
-    if(pw>=260&&!$('optExercise').checked){ctx.textAlign='right';ctx.fillText('tract',ox+pw-mr,H-10);}
+    if(pw>=260&&!fl.exercise){ctx.textAlign='right';ctx.fillText('tract',ox+pw-mr,H-10);}
     ctx.restore();
   }
   ctx.save();ctx.translate(10,(top+bot)/2);ctx.rotate(-Math.PI/2);ctx.fillStyle=T.ink;ctx.font='600 11.5px '+T.body;ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText('Height above basement (m)',0,-6);ctx.restore();
@@ -776,7 +846,13 @@ function renderOverlay(){
 function renderWells(){
   const r=S.r;if(!r)return;
   const W=Math.max(280,$('wellWrap').clientWidth),H=W<560?260:300;
-  drawWells(fitCanvas($('wellCv'),W,H),W,H,r,S.wells,theme());
+  const fl=flags();
+  drawWells(fitCanvas($('wellCv'),W,H),W,H,r,S.wells,theme(),fl);
+  const lg=$('wellLegend');
+  if(fl.exercise){lg.innerHTML='<span>Systems tracts and surfaces hidden in exercise mode</span>';}
+  else lg.innerHTML='<span class="k">Tract strip</span>'+['FSST','LST','TST','HST'].map(t=>
+    '<span><span class="tsw" style="background:'+TRACT_COL[t]+'"></span>'+TRACT_NAME[t]+'</span>').join('')+
+    (fl.surf?'<span>Lines mark surfaces where they cross the well.</span>':'');
 }
 function renderTime(){
   const r=S.r;if(!r)return;
@@ -902,7 +978,7 @@ CTL.forEach(c=>c.input.addEventListener('input',()=>{
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
 $('resetBtn').addEventListener('click',()=>{$('preset').value='default';applyPreset('default');setDirty(false);schedule();});
-['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{renderSection();renderWheeler();}));
+['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{renderSection();renderWheeler();if(id==='optSurf')renderWells();}));
 function syncExercise(){
   $('banner').hidden=!$('optExercise').checked;
   ['optSurf','optLabels'].forEach(id=>{});
