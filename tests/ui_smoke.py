@@ -281,6 +281,20 @@ def main():
                 d[0] <= d[1] and m[0] <= m[1],
                 f"1400: scrollWidth={d[0]} innerWidth={d[1]}; 400: scrollWidth={m[0]} innerWidth={m[1]}",
             )
+            # ---- 10. well logs are 8:1 (height:width) at desktop and phone widths
+            logs = {}
+            for vw, vh in ((1400, 1000), (400, 900)):
+                page.set_viewport_size({"width": vw, "height": vh})
+                time.sleep(0.8)
+                logs[vw] = page.evaluate("document.getElementById('wellCv').dataset.log || ''")
+            def ratio(t):
+                m = re.match(r"(\d+)x(\d+)$", t)
+                return int(m.group(2)) / int(m.group(1)) if m else 0
+            check(
+                "10 well logs 8:1",
+                all(abs(ratio(t) - 8) < 0.01 for t in logs.values()),
+                "; ".join(f"{k} px: log {v or 'missing'} (ratio {ratio(v):.2f})" for k, v in logs.items()),
+            )
             page.set_viewport_size({"width": 1400, "height": 1000})
             page.close()
 

@@ -17,7 +17,7 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 | `worker.js` | Web Worker that runs `simulate` off the main thread. `index.html` falls back to running on the page if workers are blocked |
 | `wheeler.js` | Wheeler diagram drawing and hover (`drawWheeler`, `wheelerHitTest`, `wheelerClassify`) |
 | `tests/engine.test.js` | Node test suite for the engine (83 tests) |
-| `tests/ui_smoke.py` | Playwright browser smoke test (9 checks) |
+| `tests/ui_smoke.py` | Playwright browser smoke test (10 checks) |
 | `tools/presets/` | Parameter-search scripts used to tune the presets |
 | `docs/NOTES_next_steps.md` | The instructor's plan for future work. Read it before starting larger changes |
 
