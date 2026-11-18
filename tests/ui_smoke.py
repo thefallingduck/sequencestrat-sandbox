@@ -294,14 +294,30 @@ def main():
             page.check('input[name="colourBy"][value="sand"]')
             time.sleep(0.6)
             h_back = [md5(page.evaluate(CANVAS_HASH_JS, i)) for i in ids]
+            # exercise mode must colour by sand content even when rate is chosen
+            page.click("#optExercise")
+            time.sleep(0.6)
+            h_ex_sand = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            page.evaluate("""() => { const e = document.querySelector('input[name="colourBy"][value="rate"]');
+                e.disabled = false; e.click(); e.disabled = true; }""")
+            time.sleep(0.6)
+            h_ex_rate = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            radios_off = page.evaluate("[...document.querySelectorAll('input[name=colourBy]')].every(e => e.disabled)")
+            page.click("#optExercise")
+            time.sleep(0.6)
+            h_after = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            page.check('input[name="colourBy"][value="sand"]')
+            time.sleep(0.4)
+            ex_sand = h_ex_rate == h_ex_sand and radios_off and h_after == h_rate[0]
             no_run = done_count(page) == before_runs
             check(
                 "11 colour by accumulation rate",
                 all(a != b for a, b in zip(h_sand, h_rate)) and h_back == h_sand
-                and no_run and len(errors) == n_err,
+                and ex_sand and no_run and len(errors) == n_err,
                 f"changed section/wheeler/wells={[a != b for a, b in zip(h_sand, h_rate)]}, "
-                f"back to sand identical={h_back == h_sand}, no run started={no_run}, "
-                f"new errors={len(errors)-n_err}",
+                f"back to sand identical={h_back == h_sand}, exercise forces sand={h_ex_rate == h_ex_sand}, "
+                f"radios disabled in exercise={radios_off}, rate restored after exercise={h_after == h_rate[0]}, "
+                f"no run started={no_run}, new errors={len(errors)-n_err}",
             )
 
             # ---- 10. well logs are 8:1 (height:width) at desktop and phone widths
