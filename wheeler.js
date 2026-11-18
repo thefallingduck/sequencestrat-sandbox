@@ -1,6 +1,7 @@
 /* Wheeler (chronostratigraphic) diagram for the sequence-stratigraphy sandbox.
    Plain script. Defines window.drawWheeler(ctx,W,H,r,opts,T) and window.wheelerHitTest(r,opts,W,H,x,y).
-   Needs window.sandRGB(f)->[r,g,b] (fallback defined here if missing). */
+   Needs window.sandRGB(f)->[r,g,b] (fallback defined here if missing). With opts.colourBy==='rate'
+   preserved cells are coloured by preserved accumulation rate (window.RateScale, ratescale.js). */
 (function(){
 'use strict';
 var SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
@@ -26,7 +27,7 @@ function classify(r,minRate){
   /* Group layers into time bins (>= 3 kyr, ~100 rows per diagram) so flood-pulse cut-and-fill
      at single-layer resolution does not dominate. Each bin is classified by what it left:
      preserved sediment, or else its net surface change (deposited-then-removed, eroding, hiatus). */
-  var N=r.x.length, K=r.nLayers, st=new Uint8Array(N*K), sand=new Float32Array(N*K);
+  var N=r.x.length, K=r.nLayers, st=new Uint8Array(N*K), sand=new Float32Array(N*K), rate=new Float32Array(N*K);
   var th=r.thickness, sf=r.sandFraction, ps=r.paleoSurface, t=r.history.t, sub=r.subsidence;
   var dtL=K>1?(t[K-1]-t[0])/(K-1):t[0];
   var bin=Math.max(1, Math.max(Math.round(3000/dtL), Math.round(K/100)));
@@ -44,10 +45,11 @@ function classify(r,minRate){
         var dz=ps[k1][i]-before+sub[i]*dtB;
         s=dz>EPS?2:(dz<-EPS?3:0);
       }
-      for(k=k0;k<=k1;k++){st[k*N+i]=s; sand[k*N+i]=fs;}
+      var rt=pres>0?pres*1000/dtKyr:0;   // preserved rate over the time step, mm/kyr
+      for(k=k0;k<=k1;k++){st[k*N+i]=s; sand[k*N+i]=fs; rate[k*N+i]=rt;}
     }
   }
-  c={st:st,sand:sand,N:N,K:K,bin:bin,minRate:minRate}; byRate[minRate]=c; return c;
+  c={st:st,sand:sand,rate:rate,N:N,K:K,bin:bin,minRate:minRate}; byRate[minRate]=c; return c;
 }
 
 function layout(W,H,opts){
@@ -89,7 +91,8 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   var cv=window.__wheelerCv||(window.__wheelerCv=document.createElement('canvas'));
   cv.width=iw; cv.height=ih;
   var c2=cv.getContext('2d'), img=c2.createImageData(iw,ih), d=img.data;
-  var cl=classify(r,opts&&opts.minRate), st=cl.st, N=cl.N, sand=cl.sand;
+  var cl=classify(r,opts&&opts.minRate), st=cl.st, N=cl.N, sand=cl.sand, rate=cl.rate;
+  var byRate=opts.colourBy==='rate'&&!!window.RateScale;
   var colOf=new Int32Array(iw), kOf=new Int32Array(ih);
   for(var px=0;px<iw;px++) colOf[px]=colAt(r,(px+.5)/iw*xView,xView);
   for(var py=0;py<ih;py++) kOf[py]=layerAt(r,(1-(py+.5)/ih)*dur);
@@ -101,7 +104,8 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
     var k=kOf[py], row=k*N, sfk=sf[k], o=py*iw*4;
     for(px=0;px<iw;px++,o+=4){
       var i=colOf[px], s=st[row+i], c;
-      if(s===1){var f=sand[row+i]; q=f!==f?0:Math.max(0,Math.min(255,Math.round(f*255))); c=lut[q];}
+      if(s===1&&byRate) c=window.RateScale.rateRGB(rate[row+i]);
+      else if(s===1){var f=sand[row+i]; q=f!==f?0:Math.max(0,Math.min(255,Math.round(f*255))); c=lut[q];}
       else c=bg; // no preserved record (eroded, removed later, or never deposited) stays blank
       d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255;
     }
@@ -180,7 +184,8 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   /* --- legend --- */
   var long=!L.narrow;
   var items=[
-    {k:'p',t:long?'Preserved sediment (colour = sand content)':'Preserved (sand content)'},
+    byRate?{k:'pr',t:long?'Preserved sediment (colour = preserved rate)':'Preserved (rate)'}
+          :{k:'p',t:long?'Preserved sediment (colour = sand content)':'Preserved (sand content)'},
     {k:'h',t:long?'Gap: less than 0.2 mm/kyr preserved':'Gap (<0.2 mm/kyr)'}];
   ctx.font='11.5px '+body; ctx.textBaseline='middle'; ctx.textAlign='left';
   var lx0=ml, ly0=L.narrow?10:11, sw=14, x0=lx0, y0=ly0;
@@ -195,7 +200,9 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
 };
 
 function swatch(ctx,k,x,y,w,h,T,dark,bg){
-  if(k==='p'){var g=ctx.createLinearGradient(x,0,x+w,0);for(var j=0;j<=4;j++){var c=sandRGB(j/4*0.8);g.addColorStop(j/4,'rgb('+c.join(',')+')');}ctx.fillStyle=g;ctx.fillRect(x,y,w,h);}
+  if(k==='pr'){var gr=ctx.createLinearGradient(x,0,x+w,0),RS=window.RateScale.RATE_STOPS;
+    RS.forEach(function(c,j){gr.addColorStop(j/(RS.length-1),'rgb('+c.join(',')+')');});ctx.fillStyle=gr;ctx.fillRect(x,y,w,h);}
+  else if(k==='p'){var g=ctx.createLinearGradient(x,0,x+w,0);for(var j=0;j<=4;j++){var c=sandRGB(j/4*0.8);g.addColorStop(j/4,'rgb('+c.join(',')+')');}ctx.fillStyle=g;ctx.fillRect(x,y,w,h);}
   else if(k==='r'){ctx.fillStyle='rgb('+(dark?C_REMOVED_D:C_REMOVED).join(',')+')';ctx.fillRect(x,y,w,h);
     ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.strokeStyle='rgb('+(dark?C_HATCH_D:C_HATCH).join(',')+')';ctx.lineWidth=1;ctx.beginPath();
     for(var s=-h;s<w;s+=4){ctx.moveTo(x+s,y+h);ctx.lineTo(x+s+h,y);}ctx.stroke();ctx.restore();}
@@ -220,6 +227,7 @@ window.wheelerHitTest=function(r,opts,W,H,cx,cy){
   var f=cl.sand[k*cl.N+i];
   return {xKm:xm/1000,timeKa:tyr/1000,
     state:['hiatus','preserved','removed','eroding'][s],
-    sand:(s===1&&f===f)?f:null};
+    sand:(s===1&&f===f)?f:null,
+    rate:s===1?cl.rate[k*cl.N+i]:null};
 };
 })();
