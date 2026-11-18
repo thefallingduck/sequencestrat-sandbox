@@ -281,6 +281,29 @@ def main():
                 d[0] <= d[1] and m[0] <= m[1],
                 f"1400: scrollWidth={d[0]} innerWidth={d[1]}; 400: scrollWidth={m[0]} innerWidth={m[1]}",
             )
+            # ---- 11. "Colour by" switches section, Wheeler and wells without starting a run
+            page.set_viewport_size({"width": 1400, "height": 1000})
+            time.sleep(0.6)
+            n_err = len(errors)
+            ids = ("secBase", "wheelCv", "wellCv")
+            before_runs = done_count(page)
+            h_sand = [md5(page.evaluate(CANVAS_HASH_JS, i)) for i in ids]
+            page.check('input[name="colourBy"][value="rate"]')
+            time.sleep(0.6)
+            h_rate = [md5(page.evaluate(CANVAS_HASH_JS, i)) for i in ids]
+            page.check('input[name="colourBy"][value="sand"]')
+            time.sleep(0.6)
+            h_back = [md5(page.evaluate(CANVAS_HASH_JS, i)) for i in ids]
+            no_run = done_count(page) == before_runs
+            check(
+                "11 colour by accumulation rate",
+                all(a != b for a, b in zip(h_sand, h_rate)) and h_back == h_sand
+                and no_run and len(errors) == n_err,
+                f"changed section/wheeler/wells={[a != b for a, b in zip(h_sand, h_rate)]}, "
+                f"back to sand identical={h_back == h_sand}, no run started={no_run}, "
+                f"new errors={len(errors)-n_err}",
+            )
+
             # ---- 10. well logs are 8:1 (height:width) at desktop and phone widths
             logs = {}
             for vw, vh in ((1400, 1000), (400, 900)):
