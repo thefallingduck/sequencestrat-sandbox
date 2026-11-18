@@ -460,8 +460,11 @@
             if (c > 0) { tot += c; kl = kk; }
           }
           if (tot >= minCut && isFinite(wave.cutBottom[kl][ii])) {
-            z[ii] = Math.min(base[ii] + wave.cutBottom[kl][ii], wave.surface[ii]);
-            any = true;
+            const zc = Math.min(base[ii] + wave.cutBottom[kl][ii], wave.surface[ii]);
+            // A WRS cut during this transgression must lie within or below the transgression's
+            // preserved deposits. Where later erosion (e.g. the next fall's river incision) cut
+            // below it, the WRS no longer exists here and is not drawn.
+            if (zc <= horizons[tr.endLayer][ii] + 1e-3) { z[ii] = zc; any = true; }
           }
         }
         if (any) surfaces.push({ type: 'WRS', layer: tr.endLayer, time: tr.startTime,

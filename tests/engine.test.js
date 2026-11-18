@@ -444,6 +444,22 @@ describe('18. wave ravinement surfaces', () => {
     assert.ok(checked > 0, 'some WRS z values are finite');
   });
 
+  test('every finite WRS z lies at or below the top of its own TST deposits', T, () => {
+    // a WRS removed by later erosion must not be drawn inside younger strata
+    const r = full();
+    let checked = 0;
+    for (const s of r.surfaces.filter(q => q.type === 'WRS')) {
+      const top = r.horizons[s.layer];
+      for (let i = 0; i < s.z.length; i++) {
+        const v = s.z[i];
+        if (!Number.isFinite(v)) continue;
+        checked++;
+        assert.ok(v <= top[i] + 1e-3, `WRS col ${i}: z ${v} above top of its TST ${top[i]}`);
+      }
+    }
+    assert.ok(checked > 0, 'some WRS z values are finite');
+  });
+
   test('ravinementDepth 0 gives no WRS surfaces', T, () => {
     const r = sim({ ravinementDepth: 0 });
     assert.strictEqual(r.surfaces.filter(s => s.type === 'WRS').length, 0);
