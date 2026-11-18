@@ -77,6 +77,90 @@
     activeLayer: 0.3                 // m, bed-surface mixing depth (at most the top 3 layers) that sets what can move
   };
 
+  /* ---- portable exp and sin ----
+     Math.exp and Math.sin differ in the last bits between JavaScript engines (e.g. Node 22
+     vs Chrome 153), and the model amplifies such differences into visibly different runs.
+     These versions use only + - * / and exact bit operations, so a run gives identical
+     results in every browser and in Node (so lab keys computed in Node match the site). */
+  // Endianness probe so the 2^k construction works on any platform.
+  var _pmF64 = new Float64Array(1);
+  var _pmU32 = new Uint32Array(_pmF64.buffer);
+  _pmF64[0] = 1;
+  var _pmHI = (_pmU32[1] === 0x3ff00000) ? 1 : 0; // index of the high word
+
+  // Exact 2^k for -1022 <= k <= 1023 by writing the exponent field directly.
+  function _pmPow2(k) {
+    _pmU32[1 - _pmHI] = 0;
+    _pmU32[_pmHI] = ((k + 1023) << 20) >>> 0;
+    return _pmF64[0];
+  }
+
+  // e^(j/32 * ln2) for j = 0..31, built once with the series below (itself portable), so the
+  // table is identical in every engine. Lets pexp use a short polynomial on a tiny interval.
+  var _pmT = new Float64Array(32);
+  (function () {
+    var LN2 = 0.693147180559945309417232121458;
+    for (var j = 0; j < 32; j++) {
+      var r = j / 32 * LN2, term = 1, sum = 1;
+      for (var n = 1; n < 30; n++) { term = term * r / n; sum = sum + term; }
+      _pmT[j] = sum;
+    }
+  })();
+
+  function pexp(x) {
+    if (x !== x) return NaN;
+    if (x > 709.78) return Infinity;
+    if (x < -708) return 0;
+    // Reduce: x = (32k + j) * ln2/32 + r, |r| <= ln2/64. The split constants have trailing zero
+    // bits so n * LN2_32_HI is exact.
+    var n = Math.round(x * 46.166241308446828);            // 32 / ln2
+    // fdlibm's ln2 split (hi has trailing zero bits) divided by 32, which is exact
+    var r = (x - n * (6.93147180369123816490e-01 / 32)) - n * (1.90821492927058770002e-10 / 32);
+    var j = n & 31, k = (n - j) / 32;
+    // e^r for |r| <= 0.0109: Taylor to degree 6 (error < 4e-18), Horner form
+    var p = r * (1 + r * (0.5 + r * (0.16666666666666666 + r * (0.041666666666666664 +
+            r * (0.0083333333333333332 + r * 0.0013888888888888889)))));
+    var v = _pmT[j] + _pmT[j] * p;
+    if (k > -1022 && k < 1023) return v * _pmPow2(k);
+    var k1 = Math.floor(k / 2);
+    return (v * _pmPow2(k1)) * _pmPow2(k - k1);
+  }
+
+  function psin(x) {
+    if (x !== x || x === Infinity || x === -Infinity) return NaN;
+    // Reduce: x = n*(pi/2) + r. Three-part pi/2 (33 trailing-zero-padded bits
+    // each) keeps n*PIO2_1 and n*PIO2_2 exact for |n| < 2^20.
+    var n = Math.round(x * 0.636619772367581343075535053490);
+    var r = ((x - n * 1.57079632673412561417e+00) - n * 6.07710050630396597660e-11)
+            - n * 2.02226624871116645580e-21;
+    var r2 = r * r;
+    var m = n - 4 * Math.floor(n / 4);       // n mod 4 in {0,1,2,3}
+    var v;
+    if (m === 0 || m === 2) {
+      // sin(r), Taylor to degree 17 (odd), Horner in r2.
+      var t = 2.8114572543455206e-15;          // 1/17!
+      t = t * r2 - 7.6471637318198164e-13;     // 1/15!
+      t = t * r2 + 1.6059043836821613e-10;     // 1/13!
+      t = t * r2 - 2.5052108385441720e-8;      // 1/11!
+      t = t * r2 + 2.7557319223985893e-6;      // 1/9!
+      t = t * r2 - 0.00019841269841269841;     // 1/7!
+      t = t * r2 + 0.0083333333333333332;      // 1/5!
+      t = t * r2 - 0.16666666666666666;        // 1/3!
+      v = r + r * r2 * t;
+      return m === 0 ? v : -v;
+    }
+    // cos(r), Taylor to degree 16 (even), Horner in r2.
+    var c = 4.7794773323873853e-14;            // 1/16!
+    c = c * r2 - 1.1470745597729725e-11;       // 1/14!
+    c = c * r2 + 2.0876756987868100e-9;        // 1/12!
+    c = c * r2 - 2.7557319223985888e-7;        // 1/10!
+    c = c * r2 + 0.000024801587301587302;      // 1/8!
+    c = c * r2 - 0.0013888888888888889;        // 1/6!
+    c = c * r2 + 0.041666666666666664;         // 1/4!
+    v = 1 - r2 * (0.5 - r2 * c);
+    return m === 1 ? v : -v;
+  }
+
   function eustasy(p, t) {
     if (p.seaLevelCurve && p.seaLevelCurve.length > 1) {
       const c = p.seaLevelCurve;
@@ -89,7 +173,7 @@
       }
       return c[c.length - 1][1];
     }
-    const cyc = (A, P, ph) => (A && P > 0) ? A * Math.sin(2 * Math.PI * t / P + (ph || 0)) : 0;
+    const cyc = (A, P, ph) => (A && P > 0) ? A * psin(2 * Math.PI * t / P + (ph || 0)) : 0;
     return p.seaLevelStart + p.seaLevelTrend * t / 1000 +
       cyc(p.seaLevelAmplitude, p.seaLevelPeriod, p.seaLevelPhase) +
       cyc(p.seaLevelAmplitude2, p.seaLevelPeriod2, p.seaLevelPhase2) +
@@ -222,7 +306,7 @@
       const fallRate = -((eustasy(p, t + recDt) - eustasy(p, t)) / recDt + subsidenceRate(p, xsNow)) * 1000;
       const target = 1 + (Math.max(1, p.fallIncision) - 1) * Math.min(1, Math.max(0, fallRate / p.fallRateRef));
       boostState = target >= boostState ? target
-        : target + (boostState - target) * Math.exp(-recDt / Math.max(1, p.incisionMemory));
+        : target + (boostState - target) * pexp(-recDt / Math.max(1, p.incisionMemory));
       const boost = boostState;
       const kMax = Math.max(p.kFluvial * boost * Math.max(mobF[0], mobF[1], mobF[2]), kMarineMax);
       const stepsPerRec = Math.max(1, Math.ceil(recDt / (0.48 * dx * dx / kMax)));
@@ -238,12 +322,12 @@
             Kj[0][i] = kf * mobF[0]; Kj[1][i] = kf * mobF[1]; Kj[2][i] = kf * mobF[2];
           } else if (pw) {
             // one exponential per cell; the other fractions by integer powers
-            const b = Math.exp(-wd / dsc[2]);
+            const b = pexp(-wd / dsc[2]);
             let e1 = 1; for (let m = 0; m < pw[1]; m++) e1 *= b;
             let e0 = 1; for (let m = 0; m < pw[0]; m++) e0 *= b;
             Kj[0][i] = p.kMarine * e0 + kdp[0]; Kj[1][i] = p.kMarine * e1 + kdp[1]; Kj[2][i] = p.kMarine * b + kdp[2];
           } else {
-            for (let j = 0; j < NF; j++) Kj[j][i] = p.kMarine * Math.exp(-wd / dsc[j]) + kdp[j];
+            for (let j = 0; j < NF; j++) Kj[j][i] = p.kMarine * pexp(-wd / dsc[j]) + kdp[j];
           }
           if (topK[i] < 0) { Fs[0][i] = 0; Fs[1][i] = 0; Fs[2][i] = 0; }
           else if (refreshComp || (Fs[0][i] + Fs[1][i] + Fs[2][i]) === 0) surfaceComp(i, k);
@@ -488,5 +572,5 @@
     }
     return { tracts, surfaces, tractByLayer: tract };
   }
-  return { DEFAULTS, simulate, eustasy, subsidenceRate };
+  return { DEFAULTS, simulate, eustasy, subsidenceRate, portableMath: { pexp, psin } };
 });

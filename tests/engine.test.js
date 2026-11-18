@@ -797,3 +797,29 @@ describe('32. preset behaviour', () => {
     assert.ok(r.edgeFraction < 0.02, `edgeFraction = ${r.edgeFraction}`);
   });
 });
+
+describe('portable maths: identical runs in every JavaScript engine', () => {
+  test('the engine calls no engine-dependent Math functions', () => {
+    // Math.exp, sin, cos, pow, log... differ in the last bits between engines (Node vs Chrome),
+    // which the model amplifies into visibly different runs. Use pexp/psin instead.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'seqstrat.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const bad = src.match(/Math\.(exp|expm1|log|log10|log2|log1p|pow|sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|cbrt|hypot)\b|\*\*/g);
+    assert.equal(bad, null, `non-portable calls: ${bad && bad.join(', ')}`);
+  });
+
+  test('pexp and psin match Math.exp and Math.sin closely', () => {
+    const { pexp, psin } = SS.portableMath;
+    assert.equal(pexp(0), 1);
+    assert.equal(psin(0), 0);
+    let s = 12345, e1 = 0, e2 = 0;
+    for (let i = 0; i < 100000; i++) {
+      s = (s * 1103515245 + 12345) >>> 0;
+      const u = s / 4294967296, x = -700 + 1400 * u, y = -2000 + 4000 * u;
+      e1 = Math.max(e1, Math.abs(pexp(x) - Math.exp(x)) / Math.exp(x));
+      e2 = Math.max(e2, Math.abs(psin(y) - Math.sin(y)));
+    }
+    assert.ok(e1 < 1e-15, `pexp max relative error ${e1}`);
+    assert.ok(e2 < 1e-15, `psin max absolute error ${e2}`);
+  });
+});
