@@ -681,11 +681,18 @@ function drawWells(ctx,W,H,r,wells,T,fl){
   const tk0=ticks(0,maxT*1.05,6),y1=Math.max(tk0[tk0.length-1],maxT*1.05),y0=-y1*0.05;
   const gap=W<560?10:24,pw=(W-gap)/2,top=28,bot=H-26;
   const zy=z=>top+(y1-z)/(y1-y0)*(bot-top);
-  // room on the right of each log for surface labels (only when surfaces are shown)
+  // room on the right of each log for surface labels (only when surfaces are shown);
+  // at most about a third of the panel, so the sand log keeps most of the width.
+  // Combined labels that do not fit are wrapped at the slashes.
   ctx.font='700 11px '+T.head;
+  const maxLab=Math.max(34,Math.round(pw*0.34)-16);
+  const wrapLabel=types=>{const lines=[];let cur='';
+    types.forEach((t,j)=>{const piece=t+(j<types.length-1?'/':'');
+      if(cur&&ctx.measureText(cur+piece).width>maxLab){lines.push(cur);cur=piece;}else cur+=piece;});
+    if(cur)lines.push(cur);return lines;};
   let labW=0;
   if(fl.surf)wells.forEach(w=>{if(w===undefined)return;
-    wellSurfaceGroups(r,w,zy,2).forEach(g=>{labW=Math.max(labW,ctx.measureText(g.types.join('/')).width);});});
+    wellSurfaceGroups(r,w,zy,2).forEach(g=>wrapLabel(g.types).forEach(l=>{labW=Math.max(labW,ctx.measureText(l).width);}));});
   const gut=labW?Math.ceil(labW)+16:0;
   for(let s=0;s<2;s++){
     const ox=s*(pw+gap),ml=40,mr=14+gut,bw=pw-ml-mr-10;
@@ -724,16 +731,18 @@ function drawWells(ctx,W,H,r,wells,T,fl){
         ctx.save();ctx.beginPath();ctx.rect(ox+ml,top-2,pw-ml-mr,bot-top+4);ctx.clip();
         groups.forEach(g=>g.items.forEach(it=>strokeSurface(ctx,it.s.type,ox+ml,xr,it.y)));
         ctx.restore();
-        // labels: keep at least LH apart, inside the plot height
-        const ly=groups.map(g=>g.y);
-        for(let j=0;j<ly.length;j++)ly[j]=Math.max(ly[j],j?ly[j-1]+LH:top+LH/2);
-        for(let j=ly.length-1;j>=0;j--)ly[j]=Math.min(ly[j],j===ly.length-1?bot-LH/2:ly[j+1]-LH);
+        // labels: centred on their line where possible, never overlapping, inside the plot height
         ctx.font='700 11px '+T.head;ctx.textAlign='left';ctx.textBaseline='middle';
+        const lab=groups.map(g=>wrapLabel(g.types)),hh=lab.map(l=>l.length*LH);
+        const ly=groups.map(g=>g.y);   // label centres
+        for(let j=0;j<ly.length;j++)ly[j]=Math.max(ly[j],j?ly[j-1]+(hh[j-1]+hh[j])/2:top+hh[j]/2);
+        for(let j=ly.length-1;j>=0;j--)ly[j]=Math.min(ly[j],j===ly.length-1?bot-hh[j]/2:ly[j+1]-(hh[j]+hh[j+1])/2);
         groups.forEach((g,j)=>{
           const lx=xr+10;
           ctx.strokeStyle=T.muted;ctx.lineWidth=1;ctx.beginPath();
           ctx.moveTo(xr+1,g.y);ctx.lineTo(xr+5,g.y);ctx.lineTo(lx-2,ly[j]);ctx.stroke();
-          ctx.fillStyle=T.ink;ctx.fillText(g.types.join('/'),lx,ly[j]);
+          ctx.fillStyle=T.ink;
+          lab[j].forEach((l,m)=>ctx.fillText(l,lx,ly[j]-hh[j]/2+LH/2+m*LH));
         });
       }
     }
