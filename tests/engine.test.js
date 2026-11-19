@@ -444,6 +444,22 @@ describe('18. wave ravinement surfaces', () => {
     assert.ok(checked > 0, 'some WRS z values are finite');
   });
 
+  test('every finite WRS z lies at or below the top of its own TST deposits', T, () => {
+    // a WRS removed by later erosion must not be drawn inside younger strata
+    const r = full();
+    let checked = 0;
+    for (const s of r.surfaces.filter(q => q.type === 'WRS')) {
+      const top = r.horizons[s.layer];
+      for (let i = 0; i < s.z.length; i++) {
+        const v = s.z[i];
+        if (!Number.isFinite(v)) continue;
+        checked++;
+        assert.ok(v <= top[i] + 1e-3, `WRS col ${i}: z ${v} above top of its TST ${top[i]}`);
+      }
+    }
+    assert.ok(checked > 0, 'some WRS z values are finite');
+  });
+
   test('ravinementDepth 0 gives no WRS surfaces', T, () => {
     const r = sim({ ravinementDepth: 0 });
     assert.strictEqual(r.surfaces.filter(s => s.type === 'WRS').length, 0);
@@ -779,5 +795,31 @@ describe('32. preset behaviour', () => {
     for (let j = 0; j < m; j++) assert.ok(eus[j] < eus[j + 1], `not rising before max at SB ${j + 1}`);
     for (let j = m; j + 1 < eus.length; j++) assert.ok(eus[j] > eus[j + 1], `not falling after max at SB ${j + 1}`);
     assert.ok(r.edgeFraction < 0.02, `edgeFraction = ${r.edgeFraction}`);
+  });
+});
+
+describe('portable maths: identical runs in every JavaScript engine', () => {
+  test('the engine calls no engine-dependent Math functions', () => {
+    // Math.exp, sin, cos, pow, log... differ in the last bits between engines (Node vs Chrome),
+    // which the model amplifies into visibly different runs. Use pexp/psin instead.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'seqstrat.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const bad = src.match(/Math\.(exp|expm1|log|log10|log2|log1p|pow|sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|cbrt|hypot)\b|\*\*/g);
+    assert.equal(bad, null, `non-portable calls: ${bad && bad.join(', ')}`);
+  });
+
+  test('pexp and psin match Math.exp and Math.sin closely', () => {
+    const { pexp, psin } = SS.portableMath;
+    assert.equal(pexp(0), 1);
+    assert.equal(psin(0), 0);
+    let s = 12345, e1 = 0, e2 = 0;
+    for (let i = 0; i < 100000; i++) {
+      s = (s * 1103515245 + 12345) >>> 0;
+      const u = s / 4294967296, x = -700 + 1400 * u, y = -2000 + 4000 * u;
+      e1 = Math.max(e1, Math.abs(pexp(x) - Math.exp(x)) / Math.exp(x));
+      e2 = Math.max(e2, Math.abs(psin(y) - Math.sin(y)));
+    }
+    assert.ok(e1 < 1e-15, `pexp max relative error ${e1}`);
+    assert.ok(e2 < 1e-15, `psin max absolute error ${e2}`);
   });
 });
