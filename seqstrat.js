@@ -227,6 +227,15 @@
 
     const nRec = Math.max(1, Math.round(p.duration / p.recordInterval));
     const recDt = p.duration / nRec;
+    // Optional snapshots for the animation (p.snapshotFrames > 0). They only READ the model
+    // state at the end of a record step, so a run gives identical results with or without them.
+    // To keep memory bounded on long runs, record layers are grouped into at most
+    // ~SNAP_MAX_BANDS bands of blockLen layers each.
+    const SNAP_MAX_BANDS = 150;
+    const snapFrames = Math.max(0, Math.floor(p.snapshotFrames || 0));
+    const snapEvery = snapFrames ? Math.max(1, Math.round(nRec / snapFrames)) : 0;
+    const blockLen = Math.max(1, Math.ceil(nRec / SNAP_MAX_BANDS));
+    const snapshots = snapFrames ? { blockLen, frames: [] } : null;
     const NF = 3;
     const phiJ = p.fractionPhi;
     const thickJ = [];          // thickJ[k][j][i]: thickness of fraction j in layer k
@@ -396,6 +405,27 @@
       hist.shorelineX.push(xsl);
       hist.shorelineZ.push(sl);
       paleoSurface.push(Float32Array.from(h)); // surface as it was at this time
+      if (snapshots && ((k + 1) % snapEvery === 0 || k === nRec - 1)) {
+        // the section as it is now: per band, its top (height above the basement of this
+        // moment) and its sand fraction, including sediment that will be eroded later
+        const nb = Math.ceil((k + 1) / blockLen);
+        const top = new Float32Array(nb * N), sandB = new Float32Array(nb * N);
+        for (let i = 0; i < N; i++) {
+          let cum = 0;
+          for (let b = 0; b < nb; b++) {
+            let tot = 0, sd = 0;
+            const k1 = Math.min(k, (b + 1) * blockLen - 1);
+            for (let kk = b * blockLen; kk <= k1; kk++) {
+              const L = thickJ[kk], a = L[0][i], c = L[0][i] + L[1][i] + L[2][i];
+              if (c > 1e-12) { tot += c; sd += a; }
+            }
+            cum += tot;
+            top[b * N + i] = cum;
+            sandB[b * N + i] = tot > 1e-12 ? sd / tot : NaN;
+          }
+        }
+        snapshots.frames.push({ k, t, seaLevel: sl, shorelineX: xsl, basement: Float32Array.from(base), nb, top, sand: sandB });
+      }
       if (onProgress && k % 20 === 0) onProgress(k / nRec);
     }
     massIn = massInJ[0] + massInJ[1] + massInJ[2];
@@ -449,7 +479,8 @@
       exportedFraction: massIn > 0 ? massOut / massIn : 0,
       // share of stored sediment in the outermost 10% of the basin (edge-effect warning)
       edgeFraction: (() => { let e = 0, a = 0; for (let i = 0; i < N; i++) { const th = h[i] - base[i]; a += th; if (x[i] >= 0.9 * p.length) e += th; } return a > 0 ? e / a : 0; })(),
-      eroded: Float32Array.from(eroded), stepsTotal
+      eroded: Float32Array.from(eroded), stepsTotal,
+      snapshots   // null unless p.snapshotFrames > 0
     };
   }
 

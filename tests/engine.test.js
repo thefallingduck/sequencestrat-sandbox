@@ -823,3 +823,54 @@ describe('portable maths: identical runs in every JavaScript engine', () => {
     assert.ok(e2 < 1e-15, `psin max absolute error ${e2}`);
   });
 });
+
+describe('animation snapshots (p.snapshotFrames)', () => {
+  // the run with snapshots switched on, shared by the tests below
+  const snapRun = () => sim({ snapshotFrames: 60 });
+  const fingerprint = r => {
+    const b = new Float64Array(1), u = new Uint32Array(b.buffer);
+    let h = 2166136261 >>> 0;
+    const add = v => { b[0] = v; h = Math.imul(h ^ u[0], 16777619) >>> 0; h = Math.imul(h ^ u[1], 16777619) >>> 0; };
+    r.horizons.forEach(a => a.forEach(add)); r.sandFraction.forEach(a => a.forEach(add));
+    r.surfaces.forEach(s => s.z.forEach(add)); r.history.shorelineX.forEach(add);
+    return h;
+  };
+
+  test('recording snapshots does not change the run at all', T, () => {
+    assert.equal(full().snapshots, null, 'plain runs carry no snapshots');
+    assert.equal(fingerprint(snapRun()), fingerprint(full()), 'results differ with snapshots on');
+  });
+
+  test('about the requested number of frames, in time order, ending at the end of the run', T, () => {
+    const r = snapRun(), F = r.snapshots.frames;
+    assert.ok(F.length >= 55 && F.length <= 65, `${F.length} frames`);
+    for (let j = 1; j < F.length; j++) assert.ok(F[j].t > F[j - 1].t, 'frame times increase');
+    assert.ok(Math.abs(F[F.length - 1].t - r.params.duration) < 1e-3, 'last frame is the end of the run');
+    assert.ok(F.every(f => f.nb <= 150), 'at most 150 bands per frame');
+  });
+
+  test('the last frame reproduces the final section', T, () => {
+    const r = snapRun(), F = r.snapshots.frames, last = F[F.length - 1];
+    const N = r.x.length, BL = r.snapshots.blockLen;
+    let worst = 0;
+    for (let i = 0; i < N; i++) {
+      for (let b = 0; b < last.nb; b++) {
+        const kTop = Math.min(r.nLayers - 1, (b + 1) * BL - 1);
+        worst = Math.max(worst, Math.abs((r.horizons[kTop][i] - r.basement[i]) - last.top[b * N + i]));
+      }
+    }
+    assert.ok(worst < 1e-3, `band tops differ from final horizons by up to ${worst} m`);
+  });
+
+  test('snapshots show erosion removing sediment during the forced-regression fall', T, () => {
+    const r = sim(Object.assign({}, PRESET.forced, { snapshotFrames: 60 })), F = r.snapshots.frames, N = r.x.length;
+    let lost = 0;
+    for (let j = 1; j < F.length; j++) {
+      for (let i = 0; i < N; i++) {
+        const before = F[j - 1].top[(F[j - 1].nb - 1) * N + i], after = F[j].top[(F[j].nb - 1) * N + i];
+        lost = Math.max(lost, before - after);
+      }
+    }
+    assert.ok(lost > 0.5, `largest drop in column thickness between frames ${lost.toFixed(2)} m`);
+  });
+});

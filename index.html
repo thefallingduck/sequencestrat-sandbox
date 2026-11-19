@@ -96,6 +96,12 @@ details.sub>summary{margin:0 0 6px}
 .warnline[hidden]{display:none}
 details>summary{cursor:pointer;font-weight:600;list-style-position:inside}
 details.adv{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+details.anim{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+details.anim summary{font:600 14px var(--f-head);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.anim-ctl{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:8px}
+.anim-ctl .msg{margin:0}
+.anim-ctl input[type=range]{flex:1 1 160px;min-width:0;accent-color:var(--accent);height:24px}
+.anim-ctl output{font:500 13px var(--f-mono);font-variant-numeric:tabular-nums;min-width:12ch}
 details.adv summary{font:600 14px var(--f-head);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
 details.adv .ctls{margin-top:10px}
 .how p{margin:8px 0 0;max-width:80ch}
@@ -204,6 +210,20 @@ dialog p{margin:0 0 10px}
         <div class="status"><span class="pill" id="pill" role="status">Running&hellip;</span><span id="status">Starting&hellip;</span></div>
         <div class="warnline" id="edgeWarn" role="status" hidden>Sediment is reaching the far edge of the basin, so results near the edge are affected.</div>
         <p class="note">Water is drawn at the end-of-run sea level. Click the section to place a pseudo-well (up to two).</p>
+        <details class="anim" id="animBox">
+          <summary>Animation through time</summary>
+          <p class="hintline">Replays the run shown above in about 60 steps: sediment filling the basin, and erosion removing some of it again. Building it re-runs the model in the background, which takes about as long as a normal run. Colours show sand content.</p>
+          <div class="anim-ctl"><button id="animBuild" type="button">Build animation</button><span class="msg" id="animMsg" role="status"></span></div>
+          <div id="animPlayer" hidden>
+            <div class="cv-wrap" id="animWrap"><canvas id="animCv" role="img" aria-label="Dip section at an earlier time in the run"></canvas></div>
+            <div class="anim-ctl">
+              <button id="animPlay" type="button">Play</button>
+              <input type="range" id="animSlider" min="0" max="59" step="1" value="0" aria-label="Time in the run">
+              <output id="animTime" for="animSlider"></output>
+              <button id="animGif" type="button">Export GIF</button>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section class="card" id="wheelCard" aria-label="Wheeler diagram">
@@ -249,6 +269,7 @@ dialog p{margin:0 0 10px}
 <script src="seqstrat.js"></script>
 <script src="ratescale.js"></script>
 <script src="wheeler.js"></script>
+<script src="gifwriter.js"></script>
 <script>
 (function(){
 'use strict';
@@ -990,13 +1011,14 @@ function renderWheeler(){
   const W=Math.max(280,$('wheelWrap').clientWidth),H=W<560?380:Math.min(520,Math.round(W*.45)+60);
   drawWheeler(fitCanvas($('wheelCv'),W,H),W,H,r,wheelerOpts(),theme());
 }
-function renderAll(){renderSection();renderWheeler();renderWells();renderTime();}
+function renderAll(){renderSection();renderWheeler();renderWells();renderTime();renderAnim();}
 let rt=0;
 function scheduleResize(){cancelAnimationFrame(rt);rt=requestAnimationFrame(renderAll);}
 new ResizeObserver(scheduleResize).observe($('secWrap'));
 new ResizeObserver(scheduleResize).observe($('wellWrap'));
 new ResizeObserver(scheduleResize).observe($('timeWrap'));
 new ResizeObserver(scheduleResize).observe($('wheelWrap'));
+new ResizeObserver(scheduleResize).observe($('animWrap'));
 $('wheelCv').addEventListener('mousemove',e=>{
   const r=S.r;if(!r||typeof wheelerHitTest!=='function')return;
   const b=$('wheelCv').getBoundingClientRect();
@@ -1047,6 +1069,187 @@ ov.addEventListener('click',e=>{
 $('optWellSep').addEventListener('change',renderWells);
 $('clearWells').addEventListener('click',()=>{S.wells=[];renderOverlay();renderWells();});
 
+/* ---------- animation through time ----------
+   "Build animation" re-runs the run shown (same parameters, so the same result bit for bit)
+   with engine snapshots on: about 60 moments, each holding every column's band tops (height
+   above the basement of that moment) and sand content, including sediment eroded later.
+   Frames draw only data: no surfaces or tract labels, so exercise mode is safe. */
+const A={r:null,frame:0,timer:0,id:0,geo:null};
+function animFrames(){return A.r?A.r.snapshots.frames:[];}
+function animReset(){
+  A.id++;A.r=null;A.geo=null;animStop();
+  $('animPlayer').hidden=true;$('animBuild').disabled=false;$('animMsg').textContent='';
+}
+function animStop(){clearInterval(A.timer);A.timer=0;$('animPlay').textContent='Play';}
+/* fixed axes for the whole animation: the final view range, with elevations wide enough for
+   every frame (earlier frames sit higher before later subsidence, and sea level moves) */
+function animGeo(W){
+  const r=A.r,F=animFrames(),G=layoutSection(W,r,'sand');
+  const N=Math.min(r.x.length,Math.ceil(G.x1/r.dx)+2);
+  let lo=Infinity,hi=-Infinity;
+  F.forEach(f=>{const T=f.top,off=(f.nb-1)*r.x.length;
+    for(let i=0;i<N;i++){const b=f.basement[i];lo=Math.min(lo,b);hi=Math.max(hi,b+T[off+i]);}
+    hi=Math.max(hi,f.seaLevel);});
+  G.y0=Math.floor((lo-4)/10)*10;G.y1=Math.ceil((hi+5)/10)*10;G.nView=N;
+  return G;
+}
+function drawAnimFrame(ctx,G,f,T){
+  const r=A.r,Ncol=r.x.length,N=G.nView,dx=r.dx,x0=r.x[0],B=f.basement,top=f.top,nb=f.nb;
+  ctx.clearRect(0,0,G.W,G.H);ctx.fillStyle=T.surface;ctx.fillRect(0,0,G.W,G.H);
+  ctx.fillStyle=T.plotBg;ctx.fillRect(G.ml,G.mt,G.pw,G.ph);
+  const px=new Float64Array(N);for(let i=0;i<N;i++)px[i]=gx(G,r.x[i]);
+  ctx.save();ctx.beginPath();ctx.rect(G.ml,G.mt,G.pw,G.ph);ctx.clip();
+  // basement as it was at this time
+  ctx.fillStyle='#45473d';ctx.beginPath();ctx.moveTo(px[0],gy(G,G.y0));
+  for(let i=0;i<N;i++)ctx.lineTo(px[i],gy(G,B[i]));
+  ctx.lineTo(px[N-1],gy(G,G.y0));ctx.closePath();ctx.fill();
+  // sediment bands, coloured by sand content (interpolated between columns, like the section)
+  const sc=Math.min(1.5,window.devicePixelRatio||1),Wp=Math.max(1,Math.round(G.pw*sc)),Hp=Math.max(1,Math.round(G.ph*sc));
+  const img=new ImageData(Wp,Hp),d=img.data,zr=z=>(G.y1-z)/(G.y1-G.y0)*Hp;
+  for(let c=0;c<Wp;c++){
+    const xm=G.x0+(c+0.5)/Wp*(G.x1-G.x0),fi=Math.max(0,Math.min(Ncol-1.000001,(xm-x0)/dx));
+    const i0=Math.floor(fi),u=fi-i0,i1=Math.min(Ncol-1,i0+1),inear=u<0.5?i0:i1;
+    const b=B[i0]*(1-u)+B[i1]*u;let below=b;
+    for(let k=0;k<nb;k++){
+      const o=k*Ncol,zt=b+top[o+i0]*(1-u)+top[o+i1]*u;
+      if(zt-below>1e-6){
+        const sf=f.sand[o+inear];
+        if(sf===sf){
+          const col=SAND_LUT[sandIdx(sf)],r0=Math.max(0,Math.floor(zr(zt))),r1=Math.min(Hp,Math.ceil(zr(below)));
+          for(let rr=r0;rr<r1;rr++){const q=(rr*Wp+c)*4;d[q]=col[0];d[q+1]=col[1];d[q+2]=col[2];d[q+3]=255;}
+        }
+        below=zt;
+      }
+    }
+  }
+  const cv=document.createElement('canvas');cv.width=Wp;cv.height=Hp;cv.getContext('2d').putImageData(img,0,0);
+  ctx.imageSmoothingEnabled=true;ctx.drawImage(cv,G.ml,G.mt,G.pw,G.ph);
+  // water up to this moment's sea level
+  const sl=f.seaLevel,ySl=gy(G,sl),surf=i=>B[i]+top[(nb-1)*Ncol+i];
+  ctx.fillStyle='rgba(79,111,194,.85)';
+  let firstWet=-1,i0=0;
+  while(i0<N){
+    while(i0<N&&surf(i0)>=sl)i0++;
+    if(i0>=N)break;
+    let i1=i0;while(i1<N&&surf(i1)<sl)i1++;
+    if(firstWet<0)firstWet=i0;
+    const a=Math.max(0,i0-1),bq=Math.min(N-1,i1);
+    ctx.beginPath();ctx.moveTo(px[a],ySl);
+    for(let i=a;i<=bq;i++)ctx.lineTo(px[i],gy(G,Math.min(surf(i),sl)));
+    ctx.lineTo(px[bq],ySl);ctx.closePath();ctx.fill();
+    i0=i1;
+  }
+  ctx.strokeStyle='#a9c8ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(firstWet<0?G.ml:px[firstWet],ySl);ctx.lineTo(G.ml+G.pw,ySl);ctx.stroke();
+  ctx.font='italic 600 12px '+T.body;ctx.fillStyle=T.sea;ctx.textAlign='right';ctx.textBaseline='bottom';
+  ctx.fillText('Sea level',G.ml+G.pw-6,ySl-3);
+  // shoreline marker
+  const xs=gx(G,f.shorelineX);
+  ctx.fillStyle=T.ink;ctx.beginPath();ctx.moveTo(xs,ySl-2);ctx.lineTo(xs-6,ySl-12);ctx.lineTo(xs+6,ySl-12);ctx.closePath();ctx.fill();
+  ctx.restore();
+  // frame and axes
+  ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.strokeRect(G.ml-.5,G.mt-.5,G.pw+1,G.ph+1);
+  ctx.fillStyle=T.muted;ctx.strokeStyle=T.muted;ctx.font='11px '+T.mono;ctx.textAlign='center';ctx.textBaseline='top';
+  ticks(G.x0/1000,G.x1/1000,G.narrow?5:9).forEach(v=>{const x=gx(G,v*1000);ctx.beginPath();ctx.moveTo(x,G.mt+G.ph);ctx.lineTo(x,G.mt+G.ph+4);ctx.stroke();ctx.fillText(String(v),x,G.mt+G.ph+6);});
+  ctx.textAlign='right';ctx.textBaseline='middle';
+  ticks(G.y0,G.y1,G.narrow?5:7).forEach(v=>{const y=gy(G,v);ctx.beginPath();ctx.moveTo(G.ml-4,y);ctx.lineTo(G.ml,y);ctx.stroke();ctx.fillText(String(v),G.ml-7,y);});
+  ctx.font='600 12.5px '+T.body;ctx.fillStyle=T.ink;ctx.textAlign='center';ctx.textBaseline='bottom';
+  ctx.fillText('Distance (km)',G.ml+G.pw/2,G.plotTotal-1);
+  ctx.save();ctx.translate(12,G.mt+G.ph/2);ctx.rotate(-Math.PI/2);ctx.textBaseline='top';ctx.fillText('Elevation (m)',0,-4);ctx.restore();
+  // legend: sand content only (frames carry no interpretation)
+  const lx=G.ml,ly=G.plotTotal+10,bw=Math.min(260,G.pw-120);
+  ctx.font='600 12px '+T.body;ctx.fillStyle=T.muted;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('Sand content',lx,ly+6);
+  const bx=lx+ctx.measureText('Sand content').width+12,grad=ctx.createLinearGradient(bx,0,bx+bw,0);
+  SAND_STOPS.forEach((c,i)=>grad.addColorStop(i/(SAND_STOPS.length-1),'rgb('+c.join(',')+')'));
+  ctx.fillStyle=grad;ctx.fillRect(bx,ly,bw,12);ctx.strokeStyle=T.line;ctx.strokeRect(bx-.5,ly-.5,bw+1,13);
+  ctx.font='600 11.5px '+T.body;ctx.fillStyle=T.ink;ctx.textBaseline='top';
+  ctx.textAlign='left';ctx.fillText('Mud',bx,ly+16);ctx.textAlign='right';ctx.fillText('Sand',bx+bw,ly+16);
+  // clock and shoreline key, at the right of the legend row (never over the section)
+  const dur=Math.round(r.params.duration/1000),oneRow=bx+bw+150<=G.ml+G.pw;
+  const rx=oneRow?G.ml+G.pw:lx,cy=oneRow?ly-4:ly+34;   // on narrow screens the clock goes under the bar
+  ctx.textAlign=oneRow?'right':'left';ctx.textBaseline='top';ctx.fillStyle=T.ink;ctx.font='600 20px '+T.head;
+  ctx.fillText('t = '+Math.round(f.t/1000)+' ka',rx,cy);
+  const tw=ctx.measureText('t = '+Math.round(f.t/1000)+' ka').width;
+  ctx.font='12px '+T.body;ctx.fillStyle=T.muted;
+  if(oneRow)ctx.fillText('of '+dur+' ka   ▼ = shoreline',rx,cy+22);
+  else{ctx.textBaseline='middle';ctx.fillText('of '+dur+' ka   ▼ = shoreline',rx+tw+10,cy+11);}
+}
+function renderAnim(){
+  if(!A.r||$('animPlayer').hidden)return;
+  const W=Math.max(280,$('animWrap').clientWidth);
+  if(!A.geo||A.geo.W!==W)A.geo=animGeo(W);
+  const F=animFrames(),f=F[Math.min(A.frame,F.length-1)];
+  drawAnimFrame(fitCanvas($('animCv'),A.geo.W,A.geo.H),A.geo,f,theme());
+  $('animTime').textContent=Math.round(f.t/1000)+' of '+Math.round(A.r.params.duration/1000)+' ka';
+  $('animSlider').value=A.frame;
+}
+function animShow(f){A.frame=Math.max(0,Math.min(animFrames().length-1,f));renderAnim();}
+$('animBuild').addEventListener('click',()=>{
+  const r=S.r;if(!r)return;
+  const prm=Object.assign({},r.params,{snapshotFrames:60}),id=++A.id;
+  $('animBuild').disabled=true;$('animMsg').textContent='Building the animation…';
+  let finished=false;
+  const done=(res,err)=>{
+    if(finished||id!==A.id)return;finished=true;
+    if(err||!res||!res.snapshots){$('animMsg').textContent='Could not build the animation: '+(err||'no snapshots');$('animBuild').disabled=false;return;}
+    A.r=res;A.geo=null;A.frame=0;
+    $('animSlider').max=res.snapshots.frames.length-1;
+    $('animPlayer').hidden=false;$('animMsg').textContent='Built from the run shown above.';
+    renderAnim();
+  };
+  const onPage=()=>requestAnimationFrame(()=>setTimeout(()=>{let res,err=null;try{res=SeqStrat.simulate(prm);}catch(e){err=e.message;}done(res,err);},30));
+  let w=null;
+  if(workerOK&&typeof Worker!=='undefined'){try{w=new Worker('worker.js');}catch(e){w=null;}}
+  if(!w){onPage();return;}
+  let started=false;
+  const fallback=setTimeout(()=>{if(!started){try{w.terminate();}catch(e){}onPage();}},4000);
+  w.onmessage=e=>{
+    const m=e.data;started=true;
+    if(m.progress!==undefined){if(id===A.id)$('animMsg').textContent='Building the animation… '+Math.round(100*m.progress)+'%';return;}
+    clearTimeout(fallback);w.terminate();done(m.result,m.error||null);
+  };
+  w.onerror=()=>{clearTimeout(fallback);try{w.terminate();}catch(e){}if(!finished)onPage();};
+  w.postMessage({id,params:prm});
+});
+$('animSlider').addEventListener('input',e=>{animStop();animShow(+e.target.value);});
+$('animPlay').addEventListener('click',()=>{
+  if(A.timer){animStop();return;}
+  const F=animFrames();if(!F.length)return;
+  if(A.frame>=F.length-1)A.frame=0;
+  $('animPlay').textContent='Pause';
+  A.timer=setInterval(()=>{if(A.frame>=animFrames().length-1){animStop();return;}animShow(A.frame+1);},150);
+});
+$('animGif').addEventListener('click',()=>exportAnimGif());
+/* GIF export: draw every frame at the displayed size and encode it in the browser */
+async function exportAnimGif(){
+  if(!A.r||typeof GifWriter==='undefined'){$('animMsg').textContent='GIF export is not available in this browser.';return;}
+  animStop();
+  const btn=$('animGif');btn.disabled=true;
+  const G=A.geo||animGeo(Math.max(280,$('animWrap').clientWidth)),T=theme(),F=animFrames();
+  const W=Math.round(G.W),H=Math.round(G.H),cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d'),rgba=[];
+  try{
+    for(let j=0;j<F.length;j++){
+      ctx.setTransform(1,0,0,1,0,0);drawAnimFrame(ctx,G,F[j],T);
+      rgba.push(ctx.getImageData(0,0,W,H).data);
+      if(j%5===0){$('animMsg').textContent='Drawing frames… '+(j+1)+'/'+F.length;await new Promise(r=>setTimeout(r));}
+    }
+    $('animMsg').textContent='Choosing colours…';await new Promise(r=>setTimeout(r));
+    const palette=GifWriter.buildPalette(rgba.filter((_,j)=>j%6===0||j===rgba.length-1));
+    const idx=[];
+    for(let j=0;j<rgba.length;j++){
+      idx.push(GifWriter.indexFrame(rgba[j],palette));
+      if(j%5===0){$('animMsg').textContent='Encoding frames… '+(j+1)+'/'+rgba.length;await new Promise(r=>setTimeout(r));}
+    }
+    // hold the last frame for 2 s so the final section can be read
+    const bytes=GifWriter.encodeGif({width:W,height:H,palette,frames:idx,delayMs:150,lastDelayMs:2000,loop:0});
+    const url=URL.createObjectURL(new Blob([bytes],{type:'image/gif'})),a=document.createElement('a');
+    a.href=url;a.download='seqstrat-animation.gif';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+    $('animMsg').textContent='GIF saved ('+(bytes.length/1e6).toFixed(1)+' MB, '+F.length+' frames).';
+  }catch(e){$('animMsg').textContent='Could not make the GIF: '+e.message;}
+  btn.disabled=false;
+}
+
 /* ---------- run ---------- */
 let timer=0;
 function schedule(){
@@ -1075,6 +1278,7 @@ function finishRun(r,ms,err){
       S.wells=fr.map(f=>Math.min(r.x.length-1,Math.floor(f*xv/r.dx)));
     }}
   S.hover=null;updateReadout(null);updateDurWarn();
+  animReset();   // a new run makes any built animation out of date
   renderAll();
 }
 function runOnPage(prm){

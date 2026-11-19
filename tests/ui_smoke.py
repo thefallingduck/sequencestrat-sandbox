@@ -136,7 +136,7 @@ def main():
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
-            ctx = browser.new_context(viewport={"width": 1400, "height": 1000})
+            ctx = browser.new_context(viewport={"width": 1400, "height": 1000}, accept_downloads=True)
             ctx.add_init_script(INIT_JS)
             page = ctx.new_page()
             workers = []
@@ -344,6 +344,44 @@ def main():
             )
             page.set_viewport_size({"width": 1400, "height": 1000})
             time.sleep(0.6)
+
+            # ---- 13. animation: build, scrub, exercise mode, and GIF export
+            page.set_viewport_size({"width": 1400, "height": 1000})
+            time.sleep(0.5)
+            n_err = len(errors)
+            before_runs = done_count(page)
+            page.click("#animBox summary")
+            page.click("#animBuild")
+            page.wait_for_function("!document.getElementById('animPlayer').hidden", timeout=RUN_TIMEOUT)
+            n_frames = int(page.get_attribute("#animSlider", "max")) + 1
+
+            def show_frame(j):
+                page.evaluate("""(j) => { const s = document.getElementById('animSlider');
+                    s.value = j; s.dispatchEvent(new Event('input')); }""", j)
+                time.sleep(0.3)
+                return md5(page.evaluate(CANVAS_HASH_JS, "animCv"))
+
+            h_first, h_last = show_frame(0), show_frame(n_frames - 1)
+            page.click("#optExercise")
+            time.sleep(0.5)
+            h_last_ex = show_frame(n_frames - 1)
+            page.click("#optExercise")
+            time.sleep(0.5)
+            with page.expect_download(timeout=RUN_TIMEOUT) as dl:
+                page.click("#animGif")
+            gif_path = dl.value.path()
+            with open(gif_path, "rb") as fh:
+                head = fh.read(6)
+            gif_size = os.path.getsize(gif_path)
+            no_run = done_count(page) == before_runs
+            check(
+                "13 animation builds, scrubs and exports a GIF",
+                55 <= n_frames <= 65 and h_first != h_last and h_last_ex == h_last
+                and head == b"GIF89a" and gif_size > 10_000 and no_run and len(errors) == n_err,
+                f"frames={n_frames}, first/last differ={h_first != h_last}, "
+                f"exercise mode leaves frames unchanged={h_last_ex == h_last}, gif header={head!r}, "
+                f"gif {gif_size/1e6:.2f} MB, main view re-run={not no_run}, new errors={len(errors)-n_err}",
+            )
 
             # ---- 14. long durations show a time warning and do not start a run
             n_err = len(errors)
