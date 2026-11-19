@@ -335,6 +335,34 @@ def main():
                 "; ".join(f"{k} px: log {v or 'missing'} (ratio {ratio(v):.2f})" for k, v in logs.items()),
             )
             page.set_viewport_size({"width": 1400, "height": 1000})
+            time.sleep(0.6)
+
+            # ---- 12. "Scale each well separately" re-draws the wells only, and undoes cleanly
+            n_err = len(errors)
+            # check 6 left one well; place a second, thinner one so the two scales can differ
+            page.locator("#secOver").scroll_into_view_if_needed()
+            time.sleep(0.2)
+            box = page.locator("#secOver").bounding_box()
+            page.mouse.click(box["x"] + box["width"] * 0.85, box["y"] + box["height"] * 0.4)
+            time.sleep(0.5)
+            before_runs = done_count(page)
+            h_shared = md5(page.evaluate(CANVAS_HASH_JS, "wellCv"))
+            page.check("#optWellSep")
+            time.sleep(0.6)
+            h_sep = md5(page.evaluate(CANVAS_HASH_JS, "wellCv"))
+            legend_on = "own height scale" in (page.text_content("#wellLegend") or "")
+            page.uncheck("#optWellSep")
+            time.sleep(0.6)
+            h_unsep = md5(page.evaluate(CANVAS_HASH_JS, "wellCv"))
+            legend_off = "own height scale" not in (page.text_content("#wellLegend") or "")
+            check(
+                "12 scale wells separately",
+                h_sep != h_shared and h_unsep == h_shared and legend_on and legend_off
+                and done_count(page) == before_runs and len(errors) == n_err,
+                f"canvas changed on={h_sep != h_shared}, restored off={h_unsep == h_shared}, "
+                f"legend note on/off={legend_on}/{legend_off}, no run started={done_count(page) == before_runs}, "
+                f"new errors={len(errors)-n_err}",
+            )
             page.close()
 
             # ---- 8. file:// fallback (workers blocked) completes a run
