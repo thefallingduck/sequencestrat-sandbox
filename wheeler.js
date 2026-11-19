@@ -169,7 +169,10 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   /* --- surface labels (right margin, nudged) --- */
   ctx.font='700 11px '+(T.head||body); ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillStyle=ink;
   labels.sort(function(a,b){return a.y-b.y;});
-  var minGap=12, ly=[]; labels.forEach(function(l,j){ly[j]=j?Math.max(l.y,ly[j-1]+minGap):l.y;});
+  var minGap=12, ly=[];
+  // all labels if they fit down the margin; on crowded (long) runs only SBs; else none
+  if(labels.length*minGap>ph) labels=labels.filter(function(l){return l.t==='SB';});
+  if(labels.length*minGap>ph) labels=[]; labels.forEach(function(l,j){ly[j]=j?Math.max(l.y,ly[j-1]+minGap):l.y;});
   var over=ly.length?ly[ly.length-1]-(mt+ph):0; if(over>0) for(var j=0;j<ly.length;j++) ly[j]-=over;
   labels.forEach(function(l,j){
     ctx.fillText(l.t,ml+pw+5,ly[j]);
