@@ -213,7 +213,7 @@ dialog p{margin:0 0 10px}
       </section>
 
       <section class="card" id="wellsCard" aria-label="Pseudo-wells">
-        <div class="wells-head"><h2>Pseudo-wells</h2><button id="clearWells" type="button">Clear wells</button></div>
+        <div class="wells-head"><h2>Pseudo-wells</h2><label class="chk"><input type="checkbox" id="optWellSep"> Scale each well separately</label><button id="clearWells" type="button">Clear wells</button></div>
         <div class="cv-wrap" id="wellWrap"><canvas id="wellCv" role="img" aria-label="Grain-size logs of placed wells"></canvas></div>
         <div class="well-legend" id="wellLegend"></div>
       </section>
@@ -314,7 +314,7 @@ function applyPreset(name){applyUI(Object.assign(defaultsUI(),PRESETS[name]||{})
 /* ---------- state ---------- */
 const S = {r:null,wells:[85,118],hover:null,ms:0,secGeo:null,rafOver:0};
 const flags = ()=>{const ex=$('optExercise').checked;return {
-  surf:$('optSurf').checked&&!ex, labels:$('optLabels').checked&&!ex, lines:$('optLines').checked, smooth:$('optSmooth').checked, exercise:ex,
+  surf:$('optSurf').checked&&!ex, labels:$('optLabels').checked&&!ex, lines:$('optLines').checked, smooth:$('optSmooth').checked, exercise:ex, wellSep:$('optWellSep').checked,
   colour:colourBy()};};
 /* "Colour by": 'sand' (sand content, default) or 'rate' (preserved accumulation rate, mm/kyr) */
 /* Exercise mode always colours by sand content: the condensed bands of the rate scale trace the
@@ -751,12 +751,18 @@ function strokeSurface(ctx,type,x0,x1,y){
 /* Well-log geometry. Each log (sand bars plus tract strip) is drawn WELL_ASPECT times taller
    than it is wide, up to WELL_LOG_MAX px wide. Width comes from the space left after the
    axis and the surface-label column, so the height follows from the width. Both wells share
-   one vertical scale with the top of basement at 0. */
+   one vertical scale with the top of basement at 0, unless "Scale each well separately" is on:
+   then each well gets its own scale from 0 to a rounded top just above its own thickness. */
 const WELL_ASPECT=8, WELL_LOG_MAX=80, WELL_LOG_MIN=24;
 function wellGeom(ctx,W,r,wells,fl,T){
+  const topFor=t=>{const tk=ticks(0,t*1.05,6);return Math.max(tk[tk.length-1],t*1.05);};
   let maxT=5;
   wells.forEach(w=>{if(w!==undefined)maxT=Math.max(maxT,r.surface[w]-r.basement[w]);});
-  const tk0=ticks(0,maxT*1.05,6),y1=Math.max(tk0[tk0.length-1],maxT*1.05),y0=-y1*0.05;
+  const y1=topFor(maxT),y0=-y1*0.05;
+  const sep=!!fl.wellSep;
+  // per-well top (own thickness in separate mode, the shared top otherwise)
+  const y1s=[0,1].map(s=>{const w=wells[s];
+    return sep&&w!==undefined?topFor(Math.max(5,r.surface[w]-r.basement[w])):y1;});
   const compact=W<560,gap=compact?10:28,top=30,foot=24,strip=fl.exercise?0:8;
   ctx.font='700 11px '+T.head;
   // combined labels that do not fit are wrapped at the slashes
@@ -770,37 +776,39 @@ function wellGeom(ctx,W,r,wells,fl,T){
     for(let pass=0;pass<2;pass++){
       LW=Math.max(WELL_LOG_MIN,Math.min(WELL_LOG_MAX,Math.floor((W-gap-44-mlB-2*(gut+6))/2)));
       if(LW>=64)break;
+      if(sep)break;   // separate scales: both wells keep their tick numbers
       mlB=14;   // tight: well B keeps tick marks but drops the numbers (same scale as A)
     }
     const logH=WELL_ASPECT*LW,bot=top+logH;
-    const zy=z=>top+(y1-z)/(y1-y0)*(bot-top);
-    return {LW,mlB,logH,bot,zy};
+    const mk=t=>{const b=-t*0.05;return z=>top+(t-z)/(t-b)*(bot-top);};
+    const zy=mk(y1),zys=[mk(y1s[0]),mk(y1s[1])];
+    return {LW,mlB,logH,bot,zy,zys};
   };
   const anyWell=wells.some(w=>w!==undefined);
   let gut=fl.surf&&anyWell?(compact?66:100):0,g=fit(gut);
   for(let it=0;it<2&&fl.surf&&anyWell;it++){
     let labW=0;
-    wells.forEach(w=>{if(w===undefined)return;
-      wellSurfaceGroups(r,w,g.zy,2).forEach(q=>wrapLabel(q.types).forEach(l=>{labW=Math.max(labW,ctx.measureText(l).width);}));});
+    wells.forEach((w,s)=>{if(w===undefined)return;
+      wellSurfaceGroups(r,w,g.zys[s],2).forEach(q=>wrapLabel(q.types).forEach(l=>{labW=Math.max(labW,ctx.measureText(l).width);}));});
     const ng=labW?Math.ceil(labW)+16:0;
     if(ng===gut)break;
     gut=ng;g=fit(gut);
   }
   const panelW=[44+g.LW+6+gut,g.mlB+g.LW+6+gut];
   const total=panelW[0]+gap+panelW[1],ox0=Math.max(0,Math.floor((W-total)/2));
-  return Object.assign(g,{W,H:g.bot+foot,top,y0,y1,gap,gut,strip,wrapLabel,compact,
+  return Object.assign(g,{W,H:g.bot+foot,top,y0,y1,y1s,sep,gap,gut,strip,wrapLabel,compact,
     ml:[44,g.mlB],ox:[ox0,ox0+panelW[0]+gap],panelW});
 }
 function drawWells(ctx,G,r,wells,T,fl){
-  const W=G.W,H=G.H,top=G.top,bot=G.bot,zy=G.zy,LW=G.LW,LH=13;
+  const W=G.W,H=G.H,top=G.top,bot=G.bot,LW=G.LW,LH=13;
   ctx.clearRect(0,0,W,H);ctx.fillStyle=T.surface;ctx.fillRect(0,0,W,H);
   const nTick=Math.max(4,Math.round(G.logH/70));
   for(let s=0;s<2;s++){
-    const ox=G.ox[s],ml=G.ml[s],x0=ox+ml,xr=x0+LW,bw=LW-G.strip-4;
+    const zy=G.zys[s],ox=G.ox[s],ml=G.ml[s],x0=ox+ml,xr=x0+LW,bw=LW-G.strip-4;
     ctx.fillStyle=T.plotBg;ctx.fillRect(x0,top,LW,bot-top);
-    // axis: shared scale; well B drops the numbers when space is tight
+    // axis: shared scale (well B drops the numbers when space is tight) or this well's own scale
     ctx.font='11px '+T.mono;ctx.fillStyle=T.muted;ctx.strokeStyle=T.muted;ctx.lineWidth=1;ctx.textAlign='right';ctx.textBaseline='middle';
-    ticks(0,G.y1,nTick).forEach(v=>{ctx.beginPath();ctx.moveTo(x0-4,zy(v));ctx.lineTo(x0,zy(v));ctx.stroke();if(ml>30)ctx.fillText(String(v),x0-7,zy(v));});
+    ticks(0,G.y1s[s],nTick).forEach(v=>{ctx.beginPath();ctx.moveTo(x0-4,zy(v));ctx.lineTo(x0,zy(v));ctx.stroke();if(ml>30)ctx.fillText(String(v),x0-7,zy(v));});
     ctx.strokeStyle=T.line;ctx.strokeRect(x0-.5,top-.5,LW+1,bot-top+1);
     const w=wells[s];
     ctx.textAlign='left';ctx.textBaseline='middle';ctx.font='600 14px '+T.head;
@@ -949,10 +957,11 @@ function renderWells(){
   $('wellCv').dataset.log=G.LW+'x'+G.logH;   // log width x height in CSS px (read by the smoke test)
   const lg=$('wellLegend');
   const barKey='<span>Bar width: sand content. Bar colour: '+(fl.colour==='rate'?'preserved accumulation rate':fl.colour==='tract'?'systems tract':'sand content')+' (same key as the section).</span>';
-  if(fl.exercise){lg.innerHTML=barKey+'<span>Systems tracts and surfaces hidden in exercise mode</span>';}
+  const sepNote=fl.wellSep?'<span>Each well has its own height scale; compare heights in metres, not by eye.</span>':'';
+  if(fl.exercise){lg.innerHTML=barKey+'<span>Systems tracts and surfaces hidden in exercise mode</span>'+sepNote;}
   else lg.innerHTML=barKey+'<span class="k">Tract strip</span>'+['FSST','LST','TST','HST'].map(t=>
     '<span><span class="tsw" style="background:'+TRACT_COL[t]+'"></span>'+TRACT_NAME[t]+'</span>').join('')+
-    (fl.surf?'<span>Lines mark surfaces where they cross the well.</span>':'');
+    (fl.surf?'<span>Lines mark surfaces where they cross the well.</span>':'')+sepNote;
 }
 function renderTime(){
   const r=S.r;if(!r)return;
@@ -1019,6 +1028,7 @@ ov.addEventListener('click',e=>{
   S.wells.sort((a,b)=>a-b);
   renderOverlay();renderWells();
 });
+$('optWellSep').addEventListener('change',renderWells);
 $('clearWells').addEventListener('click',()=>{S.wells=[];renderOverlay();renderWells();});
 
 /* ---------- run ---------- */
