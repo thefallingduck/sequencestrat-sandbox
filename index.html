@@ -614,6 +614,8 @@ function drawSection(ctx,G,r,fl,T){
       if(tr.maxThickness<1)return;
       const w=ctx.measureText(tr.type).width+12,h=18;
       const cx=gx(G,tr.labelX),cy0=gy(G,tr.labelZ);
+      // zoomed in: only label tracts whose label point is in the window (no labels pinned to the edges)
+      if(G.full&&G.x1-G.x0<G.full.x1-G.full.x0&&(cx<G.ml+w/2||cx>G.ml+G.pw-w/2||cy0<G.mt+h/2||cy0>G.mt+G.ph-h/2))return;
       let best=null;
       for(const off of [0,18,-18,36,-36,54,-54]){
         const b={x:cx-w/2,y:cy0+off-h/2,w,h};
