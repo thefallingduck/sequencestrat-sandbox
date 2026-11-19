@@ -74,7 +74,7 @@
     deepMobility: [0, 150, 300],     // m^2/yr, background deep-water transport of each fraction
     compRefresh: 1,                  // steps between bed-composition updates (1 = every step; larger is faster but noisier)
     compUpwind: 1,                   // 1 = grains come from the upstream cell (stable); 0.5 = centred (oscillates)
-    activeLayer: 0.3                 // m, bed-surface mixing depth (at most the top 3 layers) that sets what can move
+    activeLayer: 0.3                 // m, bed-surface mixing depth (at most the top 3 layers): sets what can move and is all that can be eroded in a time step
   };
 
   /* ---- portable exp and sin ----
@@ -241,6 +241,10 @@
     const thickJ = [];          // thickJ[k][j][i]: thickness of fraction j in layer k
     const colJ = [new Float64Array(N), new Float64Array(N), new Float64Array(N)]; // column totals
     const topK = new Int32Array(N).fill(-1); // highest non-empty layer per column
+    // below[k][i]: the next lower bed that held sediment when bed k first received some at
+    // column i. Walking down a column follows these links, skipping the many empty 1-kyr beds
+    // (gaps) without visiting them; beds are visited in the same order as before.
+    const below = [];
 
     const Kj = [new Float64Array(N), new Float64Array(N), new Float64Array(N)];
     const qj = [new Float64Array(N + 1), new Float64Array(N + 1), new Float64Array(N + 1)];
@@ -263,37 +267,58 @@
     const r0 = dsc[2] / dsc[0], r1 = dsc[2] / dsc[1];
     const pw = (Number.isInteger(r0) && Number.isInteger(r1)) ? [r0, r1] : null;
 
-    // composition of the top `activeLayer` metres of a column
+    // Active layer: the top `activeLayer` metres of a column (at most its top 3 non-empty beds).
+    // It sets the composition of what moves AND is the only sediment that can be eroded in a
+    // time step: activeJ[j][i] is how much of fraction j it holds, activeBot[i] its deepest bed.
+    // Lower beds join it only once the material above them has been removed.
+    const activeJ = [new Float64Array(N), new Float64Array(N), new Float64Array(N)];
+    const activeBot = new Int32Array(N).fill(-1);
+    let erodedBelowActive = 0;   // m; must stay 0 (tested): erosion never reaches under intact beds
     function surfaceComp(i, k) {
       let need = p.activeLayer, a0 = 0, a1 = 0, a2 = 0;
-      let used = 0;
-      for (let kk = topK[i]; kk >= 0 && need > 1e-12 && used < 3; kk--) {
+      let used = 0, bot = topK[i];
+      for (let kk = topK[i]; kk >= 0 && need > 1e-12 && used < 3; kk = below[kk][i]) {
         const L = thickJ[kk];
         const tot = L[0][i] + L[1][i] + L[2][i];
         if (tot <= 0) continue;
-        used++;
+        used++; bot = kk;
         const f = Math.min(1, need / tot);
         a0 += f * L[0][i]; a1 += f * L[1][i]; a2 += f * L[2][i];
         need -= f * tot;
       }
+      activeJ[0][i] = a0; activeJ[1][i] = a1; activeJ[2][i] = a2; activeBot[i] = bot;
       const s = a0 + a1 + a2;
       if (s > 0) { Fs[0][i] = a0 / s; Fs[1][i] = a1 / s; Fs[2][i] = a2 / s; }
       else { Fs[0][i] = 0; Fs[1][i] = 0; Fs[2][i] = 0; }
     }
-    function erodeJ(i, j, a, k) { // remove `a` of fraction j from the top of column i
+    function erodeJ(i, j, a, k) { // remove `a` of fraction j from the active layer of column i
       let rem = a;
-      for (let kk = topK[i]; kk >= 0 && rem > 1e-14; kk--) {
+      // only beds in the active layer (top bed down to activeBot); the flux limit below keeps the
+      // request within what the active layer holds, so this normally always suffices
+      const kb = Math.max(0, activeBot[i]);
+      for (let kk = topK[i]; kk >= kb && rem > 1e-14; kk = below[kk][i]) {
         const L = thickJ[kk][j];
         if (L[i] <= 0) continue;
         const take = Math.min(L[i], rem);
         L[i] -= take; rem -= take;
         if (L[i] < 1e-14) L[i] = 0;
       }
+      if (rem > 1e-12) {   // safety net (mass balance): should not happen; counted and tested
+        const before = rem;
+        for (let kk = activeBot[i] >= 0 ? below[activeBot[i]][i] : -1; kk >= 0 && rem > 1e-14; kk = below[kk][i]) {
+          const L = thickJ[kk][j];
+          if (L[i] <= 0) continue;
+          const take = Math.min(L[i], rem);
+          L[i] -= take; rem -= take;
+          if (L[i] < 1e-14) L[i] = 0;
+        }
+        erodedBelowActive += before - rem;
+      }
       colJ[j][i] = Math.max(0, colJ[j][i] - (a - rem));
       while (topK[i] >= 0) {
         const L = thickJ[topK[i]];
         if (L[0][i] + L[1][i] + L[2][i] > 1e-12) break;
-        topK[i]--;
+        topK[i] = below[topK[i]][i];
       }
       return a - rem;
     }
@@ -301,6 +326,7 @@
     for (let k = 0; k < nRec; k++) {
       const layer = [new Float64Array(N), new Float64Array(N), new Float64Array(N)];
       thickJ.push(layer);
+      below.push(new Int32Array(N).fill(-1));
       const WC = new Float64Array(N), CB = new Float64Array(N).fill(Infinity);
       waveCut.push(WC); cutBottom.push(CB);
       // flood pulse for this interval: more sediment, and sandier
@@ -338,7 +364,7 @@
           } else {
             for (let j = 0; j < NF; j++) Kj[j][i] = p.kMarine * pexp(-wd / dsc[j]) + kdp[j];
           }
-          if (topK[i] < 0) { Fs[0][i] = 0; Fs[1][i] = 0; Fs[2][i] = 0; }
+          if (topK[i] < 0) { Fs[0][i] = 0; Fs[1][i] = 0; Fs[2][i] = 0; activeJ[0][i] = 0; activeJ[1][i] = 0; activeJ[2][i] = 0; activeBot[i] = -1; }
           else if (refreshComp || (Fs[0][i] + Fs[1][i] + Fs[2][i]) === 0) surfaceComp(i, k);
         }
         // shoreface zone for wave ravinement
@@ -364,14 +390,51 @@
           const q = qj[j];
           q[0] = supJ[j];
           q[N] = Math.max(0, q[N - 1]); // open far edge
-          // limit outgoing flux of each fraction to what the column holds
-          for (let i = 0; i < N; i++) {
-            const out = Math.max(q[i + 1], 0) + Math.max(-q[i], 0);
-            const need = out * dt / dx, avail = colJ[j][i];
-            scale[i] = need > avail ? (avail > 0 ? avail / need : 0) : 1;
+          // A column may not LOSE more of fraction j in a step than its active layer holds, so
+          // erosion never reaches beneath beds still in place. The limit is on the NET loss
+          // (out - in): sediment passing through a column is not held back. Columns that would
+          // over-erode have their outgoing fluxes scaled down in place, sweeping left-right then
+          // right-left so each change is seen by the neighbours it feeds. If that has not settled
+          // after a few sweeps (rare), every column's gross outflow is capped at its active-layer
+          // stock at once, which can never push another column over (mass balance stays exact).
+          const A = activeJ[j], rate = dx / dt;
+          let settled = false;
+          for (let sweep = 0; sweep < 3 && !settled; sweep++) {
+            // left to right: a fix at i can only reduce what i-1 receives (q[i] < 0), which the
+            // right-to-left sweep below re-checks
+            for (let i = 0; i < N; i++) {
+              const qr = q[i + 1], ql = q[i];
+              const out = (qr > 0 ? qr : 0) + (ql < 0 ? -ql : 0);
+              if (out <= 0) continue;
+              const inn = (ql > 0 ? ql : 0) + (qr < 0 ? -qr : 0), allow = A[i] * rate;
+              if (out - inn <= allow * (1 + 1e-12)) continue;
+              const sc = (allow + inn) / out;
+              if (qr > 0) q[i + 1] = qr * sc;
+              if (ql < 0 && i > 0) q[i] = ql * sc;
+            }
+            // right to left: a fix at i can only reduce what i+1 receives (q[i+1] > 0), already
+            // passed; only then is another round needed
+            let again = false;
+            for (let i = N - 1; i >= 0; i--) {
+              const qr = q[i + 1], ql = q[i];
+              const out = (qr > 0 ? qr : 0) + (ql < 0 ? -ql : 0);
+              if (out <= 0) continue;
+              const inn = (ql > 0 ? ql : 0) + (qr < 0 ? -qr : 0), allow = A[i] * rate;
+              if (out - inn <= allow * (1 + 1e-12)) continue;
+              const sc = (allow + inn) / out;
+              if (qr > 0) { q[i + 1] = qr * sc; if (i + 1 < N) again = true; }
+              if (ql < 0 && i > 0) q[i] = ql * sc;
+            }
+            if (!again) settled = true;
           }
-          for (let f = 1; f < N; f++) q[f] *= q[f] > 0 ? scale[f - 1] : scale[f];
-          q[N] *= scale[N - 1];
+          if (!settled) {
+            for (let i = 0; i < N; i++) {
+              const out = Math.max(q[i + 1], 0) + Math.max(-q[i], 0), allow = A[i] * rate;
+              scale[i] = out > allow ? allow / out : 1;
+            }
+            for (let f = 1; f < N; f++) q[f] *= q[f] > 0 ? scale[f - 1] : scale[f];
+            q[N] *= scale[N - 1];
+          }
           massInJ[j] += q[0] * dt; massOutJ[j] += q[N] * dt;
         }
         for (let i = 0; i < N; i++) {
@@ -379,7 +442,8 @@
           for (let j = 0; j < NF; j++) {
             const d = -(qj[j][i + 1] - qj[j][i]) * dt / dx;
             if (d > 0) {
-              layer[j][i] += d; colJ[j][i] += d; topK[i] = k; net += d;
+              layer[j][i] += d; colJ[j][i] += d; net += d;
+              if (topK[i] !== k) { below[k][i] = topK[i]; topK[i] = k; }
             } else if (d < 0) {
               net -= erodeJ(i, j, -d, k);
             }
@@ -479,7 +543,7 @@
       exportedFraction: massIn > 0 ? massOut / massIn : 0,
       // share of stored sediment in the outermost 10% of the basin (edge-effect warning)
       edgeFraction: (() => { let e = 0, a = 0; for (let i = 0; i < N; i++) { const th = h[i] - base[i]; a += th; if (x[i] >= 0.9 * p.length) e += th; } return a > 0 ? e / a : 0; })(),
-      eroded: Float32Array.from(eroded), stepsTotal,
+      eroded: Float32Array.from(eroded), stepsTotal, erodedBelowActive,
       snapshots   // null unless p.snapshotFrames > 0
     };
   }

@@ -874,3 +874,38 @@ describe('animation snapshots (p.snapshotFrames)', () => {
     assert.ok(lost > 0.5, `largest drop in column thickness between frames ${lost.toFixed(2)} m`);
   });
 });
+
+describe('erosion works from the top down (active layer)', () => {
+  // Grain sizes can be winnowed selectively only inside the active layer (top 0.3 m). A bed below
+  // it may lose nothing while older beds above it are still in place. Older beds only ever get
+  // thinner, so a bed with >= activeLayer of older sediment still above it at the end of a 1-kyr
+  // step was never in the active layer during that step.
+  test('no bed loses material while >= 0.3 m of older sediment still covers it', T, () => {
+    const r = sim({ duration: 150000, snapshotFrames: 150 });
+    const F = r.snapshots.frames, N = r.x.length, AL = r.params.activeLayer;
+    assert.equal(r.snapshots.blockLen, 1, 'one band per 1-kyr layer');
+    const th = (f, k, i) => f.top[k * N + i] - (k ? f.top[(k - 1) * N + i] : 0);
+    let checked = 0, bad = 0, worst = 0;
+    for (let j = 1; j < F.length; j++) {
+      const a = F[j - 1], b = F[j];
+      for (let i = 0; i < N; i++) {
+        const oldTop = b.top[(a.nb - 1) * N + i];
+        for (let k = 0; k < a.nb - 1; k++) {
+          const tA = th(a, k, i);
+          if (tA < 1e-6) continue;
+          checked++;
+          const lost = tA - th(b, k, i);
+          if (lost > 1e-6 && oldTop - b.top[k * N + i] >= AL) { bad++; worst = Math.max(worst, lost); }
+        }
+      }
+    }
+    assert.ok(checked > 100000, `${checked} bed-steps checked`);
+    assert.equal(bad, 0, `${bad} beds lost material beneath intact older beds (worst ${worst.toFixed(3)} m)`);
+  });
+
+  test('erosion never has to reach below the active layer (defaults and reference preset)', T, () => {
+    assert.ok(PRESET.reference, 'reference preset defined');
+    assert.equal(full().erodedBelowActive, 0);
+    assert.equal(sim(PRESET.reference).erodedBelowActive, 0);
+  });
+});
