@@ -427,6 +427,40 @@ def main():
                 f"legend note on/off={legend_on}/{legend_off}, no run started={done_count(page) == before_runs}, "
                 f"new errors={len(errors)-n_err}",
             )
+            # ---- 15. zoom the dip section: redraws only the section, drag pans without placing a well, reset restores
+            n_err = len(errors)
+            before_runs = done_count(page)
+            page.locator("#secOver").scroll_into_view_if_needed()
+            time.sleep(0.2)
+            sec_full = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            wells_full = md5(page.evaluate(CANVAS_HASH_JS, "wellCv"))
+            reset_off = page.is_disabled("#zoomReset")
+            page.click("#zoomIn")
+            time.sleep(0.5)
+            sec_zoom = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            grab = page.evaluate("getComputedStyle(document.getElementById('secOver')).cursor") == "grab"
+            box = page.locator("#secOver").bounding_box()
+            cx, cy = box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.4
+            page.mouse.move(cx, cy)
+            page.mouse.down()
+            page.mouse.move(cx - 40, cy + 6, steps=6)
+            page.mouse.up()
+            time.sleep(0.6)
+            sec_pan = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            wells_pan = md5(page.evaluate(CANVAS_HASH_JS, "wellCv"))
+            page.click("#zoomReset")
+            time.sleep(0.5)
+            sec_back = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            check(
+                "15 section zoom",
+                reset_off and sec_zoom != sec_full and grab and sec_pan != sec_zoom
+                and wells_pan == wells_full and sec_back == sec_full
+                and done_count(page) == before_runs and len(errors) == n_err,
+                f"reset disabled at full view={reset_off}, zoom changes section={sec_zoom != sec_full}, "
+                f"grab cursor={grab}, drag pans={sec_pan != sec_zoom}, drag placed no well={wells_pan == wells_full}, "
+                f"reset restores full view={sec_back == sec_full}, no run started={done_count(page) == before_runs}, "
+                f"new errors={len(errors)-n_err}",
+            )
             page.close()
 
             # ---- 8. file:// fallback (workers blocked) completes a run
