@@ -290,14 +290,14 @@ const $ = id => document.getElementById(id);
 /* ---------- controls ---------- */
 const CTL = [
   {g:'g-sea',id:'amp',label:'Amplitude',key:'seaLevelAmplitude',min:0,max:30,step:1,unit:'m',to:v=>v,from:v=>v},
-  {g:'g-sea',id:'period',label:'Period',key:'seaLevelPeriod',min:20,max:200,step:5,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sea',id:'period',label:'Period',key:'seaLevelPeriod',min:5,max:200,step:5,unit:'ka',to:v=>v*1000,from:v=>v/1000},
   {g:'g-sea4',id:'trend',label:'Long-term trend',key:'seaLevelTrend',min:-0.3,max:0.3,step:0.01,unit:'m/kyr',to:v=>v,from:v=>v},
   {g:'g-sea',id:'phase',label:'Starting phase',key:'seaLevelPhase',min:0,max:360,step:5,unit:'°',to:v=>v*Math.PI/180,from:v=>v*180/Math.PI},
   {g:'g-sea2',id:'amp2',label:'Amplitude',key:'seaLevelAmplitude2',min:0,max:30,step:1,unit:'m',to:v=>v,from:v=>v},
-  {g:'g-sea2',id:'period2',label:'Period',key:'seaLevelPeriod2',min:100,max:1000,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sea2',id:'period2',label:'Period',key:'seaLevelPeriod2',min:20,max:1000,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
   {g:'g-sea2',id:'phase2',label:'Starting phase',key:'seaLevelPhase2',min:0,max:360,step:5,unit:'°',to:v=>v*Math.PI/180,from:v=>v*180/Math.PI},
   {g:'g-sea3',id:'amp3',label:'Amplitude',key:'seaLevelAmplitude3',min:0,max:40,step:1,unit:'m',to:v=>v,from:v=>v},
-  {g:'g-sea3',id:'period3',label:'Period',key:'seaLevelPeriod3',min:400,max:3000,step:50,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-sea3',id:'period3',label:'Period',key:'seaLevelPeriod3',min:40,max:3000,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
   {g:'g-sea3',id:'phase3',label:'Starting phase',key:'seaLevelPhase3',min:0,max:360,step:5,unit:'°',to:v=>v*Math.PI/180,from:v=>v*180/Math.PI},
   {g:'g-sub',id:'ishore',label:'Initial shoreline',key:'initialShoreline',min:10,max:150,step:1,unit:'km',to:v=>v*1000,from:v=>v/1000},
   {g:'g-sub',id:'subs',label:'Rate at 150 km',key:'subsidenceMax',min:0,max:0.5,step:0.01,unit:'m/kyr',to:v=>v,from:v=>v},
@@ -516,16 +516,30 @@ function legendFitsOneRow(W,narrow,mode){
   // left margin + surface key + gap + bar title + 12 + bar + 52 (room for the last tick label) + right margin
   return ml+surf+16+title+12+barW+52+mr<=W;
 }
+/* x positions and rows of the surface key; wraps to a second row when it would run past the canvas edge */
+function surfKeyLayout(c,W,narrow,ml){
+  c.font='600 12px '+theme().body;
+  const LW=narrow?22:34,gap=narrow?10:16,x0=ml+c.measureText('Surfaces').width+(narrow?8:12);
+  let x=x0,row=0;const pos=[];
+  SURF_ORDER.forEach(t=>{
+    const w=LW+6+c.measureText(t).width;
+    if(x>x0&&x+w>W-8){x=x0;row++;}
+    pos.push({t,x,row});x+=w+gap;
+  });
+  return {pos,rows:row+1,LW};
+}
 function layoutSection(W,r,mode,noZoom){
   const narrow=W<560;
   const stackLeg=!legendFitsOneRow(W,narrow,mode);   // surface key and colour bar on two rows if one is too tight
-  const legendH=stackLeg?92:58;
+  const keyRows=surfKeyLayout(legendMeasureCtx||(legendMeasureCtx=document.createElement('canvas').getContext('2d')),W,narrow,narrow?44:56).rows;
+  const keyExtra=(keyRows-1)*18;
+  const legendH=(stackLeg?92:58)+keyExtra;
   const ml=narrow?44:56,mr=narrow?10:16,mt=10,mb=narrow?36:42;
   const plotTotal=Math.round(W/(narrow?1.5:2.2));
   const H=plotTotal+legendH;
   const xv=viewRange(r);
   const [y0,y1]=ylim(r,xv);
-  const G={W,H,ml,mr,mt,mb,narrow,stackLeg,legendH,pw:W-ml-mr,ph:plotTotal-mt-mb,y0,y1,x0:0,x1:xv,plotTotal,full:{x0:0,x1:xv,y0,y1}};
+  const G={W,H,ml,mr,mt,mb,narrow,stackLeg,legendH,keyExtra,pw:W-ml-mr,ph:plotTotal-mt-mb,y0,y1,x0:0,x1:xv,plotTotal,full:{x0:0,x1:xv,y0,y1}};
   const z=noZoom?null:S.zoom;
   if(z){   // student zoom: replace the view window, clamped inside the full view
     const w=Math.min(xv,Math.max(1,z.x1-z.x0)),h=Math.min(y1-y0,Math.max(1,z.y1-z.y0));
@@ -656,24 +670,24 @@ function drawLegend(ctx,G,T,mode){
   let x=G.ml,y=y0+12;
   ctx.fillStyle=T.muted;ctx.textAlign='left';ctx.fillText('Surfaces',x,y);
   x+=ctx.measureText('Surfaces').width+(G.narrow?8:12);
-  const LW=G.narrow?22:34;
-  const names={SB:'SB',BSFR:'BSFR',TS:'TS',MFS:'MFS',WRS:'WRS'};
-  SURF_ORDER.forEach(t=>{
+  const K=surfKeyLayout(ctx,G.W,G.narrow,G.ml),LW=K.LW;
+  ctx.textBaseline='middle';
+  K.pos.forEach(({t,x,row})=>{
+    const yy=y+row*18;
     ctx.setLineDash(SURF_DASH[t]);
     // legend sits on the panel background, so use ink for the stroke
-    ctx.strokeStyle=T.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+LW,y);ctx.stroke();
+    ctx.strokeStyle=T.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+LW,yy);ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle=T.ink;ctx.fillText(names[t],x+LW+6,y);
-    x+=LW+6+ctx.measureText(names[t]).width+(G.narrow?10:16);
+    ctx.fillStyle=T.ink;ctx.fillText(t,x+LW+6,yy);
   });
   // colour bar: sand content, or preserved accumulation rate on a log scale
   const rate=mode==='rate',tract=mode==='tract',title=tract?'Systems tract':rate?'Preserved rate (mm/kyr)':'Sand content';
   const barW=G.stackLeg?Math.min(260,G.pw-60):260,barH=12;
   let bx,by;
-  if(G.stackLeg){bx=G.ml+8;by=y0+46;}else{bx=G.ml+G.pw-barW-52;by=y0+4;}
+  if(G.stackLeg){bx=G.ml+8;by=y0+46+(G.keyExtra||0);}else{bx=G.ml+G.pw-barW-52;by=y0+4;}
   ctx.font='600 12px '+T.body;ctx.fillStyle=T.muted;ctx.textAlign=G.stackLeg?'left':'right';
   if(!G.stackLeg)ctx.fillText(title,bx-12,by+barH/2);
-  else ctx.fillText(title,G.ml,y0+36);
+  else ctx.fillText(title,G.ml,y0+36+(G.keyExtra||0));
   if(tract){  // four labelled blocks, oldest-to-youngest order of a sequence
     const TT=['FSST','LST','TST','HST'],bw=barW/TT.length;
     TT.forEach((t,i)=>{ctx.fillStyle=TRACT_COL[t];ctx.fillRect(bx+i*bw,by,Math.ceil(bw),barH);});
