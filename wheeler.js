@@ -200,8 +200,8 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
 };
 
 function swatch(ctx,k,x,y,w,h,T,dark,bg){
-  if(k==='pr'){var gr=ctx.createLinearGradient(x,0,x+w,0),RS=window.RateScale.RATE_STOPS;
-    RS.forEach(function(c,j){gr.addColorStop(j/(RS.length-1),'rgb('+c.join(',')+')');});ctx.fillStyle=gr;ctx.fillRect(x,y,w,h);}
+  if(k==='pr'){var RS=window.RateScale.RATE_STOPS,bw=w/RS.length;   // one block per rate band
+    RS.forEach(function(c,j){ctx.fillStyle='rgb('+c.join(',')+')';ctx.fillRect(x+j*bw,y,Math.ceil(bw),h);});}
   else if(k==='p'){var g=ctx.createLinearGradient(x,0,x+w,0);for(var j=0;j<=4;j++){var c=sandRGB(j/4*0.8);g.addColorStop(j/4,'rgb('+c.join(',')+')');}ctx.fillStyle=g;ctx.fillRect(x,y,w,h);}
   else if(k==='r'){ctx.fillStyle='rgb('+(dark?C_REMOVED_D:C_REMOVED).join(',')+')';ctx.fillRect(x,y,w,h);
     ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.strokeStyle='rgb('+(dark?C_HATCH_D:C_HATCH).join(',')+')';ctx.lineWidth=1;ctx.beginPath();

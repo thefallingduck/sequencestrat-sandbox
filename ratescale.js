@@ -9,15 +9,20 @@
   else root.RateScale = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var RATE_MIN = 0.1, RATE_MAX = 1000;              // mm/kyr, ends of the log colour scale
-  var LOG_MIN = Math.log10(RATE_MIN), LOG_SPAN = Math.log10(RATE_MAX) - LOG_MIN;
-  /* one colour per decade (0.1, 1, 10, 100, 1000 mm/kyr): single-hue purple, dark = slow
-     (condensed) to pale = fast. Different hue from the sand-content scale; both ends stay
-     distinct from the light and the dark plot backgrounds. */
-  var RATE_STOPS = ['#4a2163', '#6d3c8e', '#8e60af', '#ad88c8', '#ccb2e0']
+  /* Split log scale in 8 colour bands, each the same width on the legend:
+       whole decades for slow rates (where most of the TIME record sits: <1, 1-10, 10-100)
+       and half decades for fast rates (where most of the section VOLUME sits:
+       100-300, 300-1k, 1k-3k, 3k-10k, >=10k mm/kyr).
+     Colours run from dark violet (slow, condensed) through magenta and red to pale apricot
+     (fast). Different from the sand-content scale; both ends stay distinct from the light
+     and dark plot backgrounds. */
+  var RATE_EDGES = [0.1, 1, 10, 100, 300, 1000, 3000, 10000, 30000];   // band edges, mm/kyr
+  var RATE_MIN = RATE_EDGES[0], RATE_MAX = RATE_EDGES[RATE_EDGES.length - 1];
+  var LOG_EDGES = RATE_EDGES.map(function (v) { return Math.log10(v); });
+  var NB = RATE_EDGES.length - 1;                                        // 8 bands
+  var RATE_STOPS = ['#3c2766', '#632474', '#902275', '#bb2567', '#da4149', '#e9693a', '#f59145', '#f9b879']
     .map(function (h) { return [1, 3, 5].map(function (i) { return parseInt(h.substr(i, 2), 16); }); });
-  var RATE_TICKS = [0.1, 1, 10, 100, 1000];
-
+  var RATE_TICKS = RATE_EDGES.slice();
   /* thickness in metres over a duration in years -> mm/kyr; 0 when nothing is preserved */
   function rateMmPerKyr(thicknessM, durationYr) {
     if (!(thicknessM > 0) || !(durationYr > 0)) return 0;
@@ -46,17 +51,22 @@
     if (cache) cache.set(r, out);
     return out;
   }
-  /* position 0..1 on the colour scale for a log10 rate (clamped at the ends) */
-  function logRatePos(lr) { return Math.max(0, Math.min(1, (lr - LOG_MIN) / LOG_SPAN)); }
-  function ratePos(rate) { return rate > 0 ? logRatePos(Math.log10(rate)) : 0; }
-
-  var LUT = [];
-  for (var q = 0; q <= 255; q++) {
-    var f = q / 255 * (RATE_STOPS.length - 1), j = Math.min(RATE_STOPS.length - 2, Math.floor(f)), u = f - j;
-    LUT.push(RATE_STOPS[j].map(function (v, m) { return Math.round(v + (RATE_STOPS[j + 1][m] - v) * u); }));
+  /* position 0..1 along the legend for a log10 rate: band j covers [j/NB, (j+1)/NB], log-linear
+     inside the band; clamped at the ends */
+  function logRatePos(lr) {
+    if (!(lr > LOG_EDGES[0])) return 0;
+    if (lr >= LOG_EDGES[NB]) return 1;
+    var j = 0; while (j < NB - 1 && lr >= LOG_EDGES[j + 1]) j++;
+    return (j + (lr - LOG_EDGES[j]) / (LOG_EDGES[j + 1] - LOG_EDGES[j])) / NB;
   }
+  function ratePos(rate) { return rate > 0 ? logRatePos(Math.log10(rate)) : 0; }
+  /* band 0..NB-1 for a position: one flat colour per band */
+  function bandOf(pos) { return Math.min(NB - 1, Math.floor(pos * NB)); }
+
+  var LUT = [];                                  // 256 entries, flat within each band
+  for (var q = 0; q <= 255; q++) LUT.push(RATE_STOPS[bandOf(q / 255)]);
   function logRateIdx(lr) { return Math.round(logRatePos(lr) * 255); }
-  function rateRGB(rate) { return LUT[Math.round(ratePos(rate) * 255)]; }
+  function rateRGB(rate) { return RATE_STOPS[bandOf(ratePos(rate))]; }
   function rateColor(rate) { var c = rateRGB(rate); return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
   /* readable number: 0.35, 3.2, 47, 1200 */
   function fmtRate(rate) {
@@ -64,7 +74,8 @@
     if (rate >= 100) return String(Math.round(rate));
     return String(+rate.toPrecision(2));
   }
-  return { RATE_MIN: RATE_MIN, RATE_MAX: RATE_MAX, RATE_STOPS: RATE_STOPS, RATE_TICKS: RATE_TICKS, LUT: LUT,
+  return { RATE_MIN: RATE_MIN, RATE_MAX: RATE_MAX, RATE_EDGES: RATE_EDGES, RATE_STOPS: RATE_STOPS, RATE_TICKS: RATE_TICKS, LUT: LUT,
+    bandOf: bandOf,
     rateMmPerKyr: rateMmPerKyr, layerDurations: layerDurations, layerLogRates: layerLogRates,
     logRatePos: logRatePos, ratePos: ratePos, logRateIdx: logRateIdx,
     rateRGB: rateRGB, rateColor: rateColor, fmtRate: fmtRate };
