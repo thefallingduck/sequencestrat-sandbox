@@ -97,6 +97,8 @@ legend{font:600 14px var(--f-head);text-transform:uppercase;letter-spacing:.08em
 .sub-head:first-of-type{margin-top:0}
 details.sub{margin-top:6px;border-top:1px dashed var(--line);padding-top:6px}
 details.sub>summary{margin:0 0 6px}
+.recchart{display:block;width:100%;height:84px;margin:2px 0 6px;cursor:pointer}
+.recwin{margin:-2px 0 6px;font-weight:600;font-size:13px}
 .trendgrp{border-top:1px dashed var(--line);margin-top:8px;padding-top:8px}
 .warnline{color:var(--warn);font:600 13px/1.35 var(--f-body);margin-top:6px}
 .warnline[hidden]{display:none}
@@ -174,10 +176,11 @@ dialog p{margin:0 0 10px}
             </select>
           </div>
           <div id="g-rec" hidden>
-            <div class="ctl"><label for="c-recStart">Run starts</label><output for="c-recStart" id="o-recStart"></output>
-              <input type="range" id="c-recStart" min="10" max="3599" step="1" value="240"></div>
-            <p class="hintline">Sea level follows the global record reconstructed by <a href="https://doi.org/10.5194/cp-17-361-2021" target="_blank" rel="noopener">Berends et al. (2021)</a> (data <a href="https://doi.org/10.5281/zenodo.3793592" target="_blank" rel="noopener">CC BY 4.0</a>), forward from the start time, in place of the sine cycles. Starting level and long-term trend still apply. Glacial cycles of the last million years swing sea level by about 100 m.</p>
-            <p class="warnline" id="recWarn" role="status" hidden></p>
+            <canvas id="recChart" class="recchart" role="img" aria-label="Sea-level record for the last 3.6 million years with this run's time window shaded"></canvas>
+            <div class="ctl"><label for="c-recEnd">Run ends</label><output for="c-recEnd" id="o-recEnd"></output>
+              <input type="range" id="c-recEnd" min="0" max="3599" step="1" value="3599" aria-describedby="recWin"></div>
+            <p class="recwin" id="recWin"></p>
+            <p class="hintline">Sea level follows the global record reconstructed by <a href="https://doi.org/10.5194/cp-17-361-2021" target="_blank" rel="noopener">Berends et al. (2021)</a> (data <a href="https://doi.org/10.5281/zenodo.3793592" target="_blank" rel="noopener">CC BY 4.0</a>) through the shaded window, in place of the sine cycles. Slide right to end the run closer to today, or click the chart. The window's length is the run Duration. Starting level and long-term trend still apply. Glacial cycles of the last million years swing sea level by about 100 m.</p>
           </div>
           <div id="g-cycles">
           <p class="hintline">Cycle orders are compressed in time for teaching.</p>
@@ -353,21 +356,54 @@ function params(){const p={};CTL.forEach(c=>{p[c.key]=c.to(parseFloat(c.input.va
   return p;}
 /* ---------- real sea-level record (Berends et al. 2021) ---------- */
 const useRecord=()=>$('slSource').value==='record'&&!!window.SeaLevelRecord;
-const recStartKa=()=>parseInt($('c-recStart').value,10);
-/* the record's change in sea level since the start time, added to the starting level and trend; one point per kyr */
+/* the run's window in the record, in ka before present: ends at endKa, starts duration earlier.
+   The slider runs oldest (left) to today (right); the window is kept inside the record. */
+function recWindow(){
+  const R=window.SeaLevelRecord,top=R?R.startKaAgo:3599,dur=Math.round(parseFloat(byId.dur.input.value));
+  let end=top-parseInt($('c-recEnd').value,10);
+  end=Math.max(0,Math.min(end,top-dur));
+  return {start:end+dur,end,dur,top};
+}
+const fmtAge=ka=>ka<=0?'today':ka>=1000?(ka/1000).toFixed(2)+' Ma':ka+' ka';
+/* the record's change in sea level since the window start, added to the starting level and trend; one point per kyr */
 function recordCurve(p){
-  const R=window.SeaLevelRecord,S0=recStartKa(),base=R.at(S0),c=[];
+  const R=window.SeaLevelRecord,S0=recWindow().start,base=R.at(S0),c=[];
   const z0=p.seaLevelStart!=null?p.seaLevelStart:DEF.seaLevelStart,tr=p.seaLevelTrend!=null?p.seaLevelTrend:DEF.seaLevelTrend;
   for(let t=0;t<=p.duration+1000;t+=1000)c.push([t,z0+tr*t/1000+R.at(S0-t/1000)-base]);
   return c;
 }
 function syncRecordUI(){
-  const rec=$('slSource').value==='record',S0=recStartKa(),dur=parseFloat(byId.dur.input.value);
+  const rec=$('slSource').value==='record';
   $('g-rec').hidden=!rec;$('g-cycles').hidden=rec;
-  $('o-recStart').textContent=S0>=1000?(S0/1000).toFixed(2)+' Ma ago':S0+' ka ago';
-  const w=$('recWarn');
-  if(rec&&dur>S0){w.textContent='This run ('+dur+' kyr) is longer than the time since its start, so sea level stays at its present-day value for the last '+(dur-S0)+' kyr.';w.hidden=false;}
-  else w.hidden=true;
+  if(!rec||!window.SeaLevelRecord)return;
+  const w=recWindow();
+  $('o-recEnd').textContent=w.end<=0?'Today':fmtAge(w.end)+' ago';
+  $('recWin').textContent='This run: '+fmtAge(w.start)+(w.start>0?' ago':'')+' \u2192 '+fmtAge(w.end)+(w.end>0?' ago':'')+' ('+w.dur+' kyr)';
+  drawRecChart();
+}
+/* small overview of the whole record, oldest on the left, today on the right, run window shaded */
+function drawRecChart(){
+  const cv=$('recChart'),R=window.SeaLevelRecord;if(!R||$('g-rec').hidden)return;
+  const W=Math.max(120,Math.round(cv.parentNode.clientWidth||260)),H=84;   // parent width: fitCanvas fixes the canvas's own CSS width
+  const ctx=fitCanvas(cv,W,H),T=theme(),w=recWindow();
+  const ml=4,mr=4,mt=6,mb=16,pw=W-ml-mr,ph=H-mt-mb,z0=-125,z1=20;
+  const X=ka=>ml+(1-ka/R.startKaAgo)*pw,Y=z=>mt+(z1-z)/(z1-z0)*ph;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=T.accent;ctx.globalAlpha=.18;ctx.fillRect(X(w.start),mt,Math.max(2,X(w.end)-X(w.start)),ph);ctx.globalAlpha=1;
+  ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(ml,Y(0)+.5);ctx.lineTo(ml+pw,Y(0)+.5);ctx.stroke();
+  ctx.strokeStyle=T.muted;ctx.lineWidth=1;ctx.beginPath();
+  const n=R.values.length,stepPx=Math.max(1,Math.floor(n/(pw*2)));
+  for(let k=0;k<n;k+=stepPx){const ka=R.startKaAgo-k,x=X(ka),y=Y(R.values[k]);if(k)ctx.lineTo(x,y);else ctx.moveTo(x,y);}
+  ctx.stroke();
+  ctx.strokeStyle=T.accent;ctx.lineWidth=1.6;ctx.beginPath();
+  for(let ka=w.start;ka>=w.end;ka--){const x=X(ka),y=Y(R.at(ka));if(ka===w.start)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.strokeStyle=T.accent;ctx.lineWidth=1;ctx.strokeRect(X(w.start)+.5,mt+.5,Math.max(2,X(w.end)-X(w.start))-1,ph-1);
+  ctx.font='10.5px '+T.mono;ctx.fillStyle=T.muted;ctx.textBaseline='top';
+  [[3,'3 Ma'],[2,'2 Ma'],[1,'1 Ma'],[0,'Today']].forEach(([ma,lab])=>{
+    const x=X(ma*1000);ctx.textAlign=ma===0?'right':'center';ctx.fillText(lab,ma===0?ml+pw:x,mt+ph+3);
+    ctx.fillRect(x-(ma===0?1:0),mt+ph,1,2);
+  });
 }
 function setSource(v){$('slSource').value=v;syncRecordUI();}
 const PRESETS = {
@@ -1487,7 +1523,15 @@ CTL.forEach(c=>c.input.addEventListener('input',()=>{
   if(c.id==='dur'){updateDurWarn();syncRecordUI();}
 }));
 $('slSource').addEventListener('change',()=>{syncRecordUI();$('preset').value='custom';setDirty(true);});
-$('c-recStart').addEventListener('input',()=>{syncRecordUI();$('preset').value='custom';setDirty(true);});
+$('c-recEnd').addEventListener('input',()=>{syncRecordUI();$('preset').value='custom';setDirty(true);});
+$('recChart').addEventListener('click',e=>{   // click the overview: end the window at that age
+  const R=window.SeaLevelRecord;if(!R)return;
+  const rc=$('recChart').getBoundingClientRect(),f=Math.max(0,Math.min(1,(e.clientX-rc.left-4)/(rc.width-8)));
+  const w=recWindow(),endKa=Math.round((1-f)*R.startKaAgo)-Math.round(w.dur/2);   // centre the window on the click
+  $('c-recEnd').value=R.startKaAgo-Math.max(0,endKa);
+  syncRecordUI();$('preset').value='custom';setDirty(true);
+});
+window.addEventListener('resize',()=>drawRecChart());
 syncRecordUI();
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
@@ -1515,7 +1559,7 @@ $('revealBtn').addEventListener('click',()=>{$('optExercise').checked=false;sync
 /* ---------- copy / export ---------- */
 $('copyBtn').addEventListener('click',()=>{
   const pj=params();
-  if(pj.seaLevelCurve){delete pj.seaLevelCurve;pj.seaLevelForcing='Berends et al. (2021) record, starting '+recStartKa()+' ka before present';}
+  if(pj.seaLevelCurve){delete pj.seaLevelCurve;pj.seaLevelForcing='Berends et al. (2021) record, window '+recWindow().start+' to '+recWindow().end+' ka before present';}
   const txt=JSON.stringify(pj,null,2),box=$('jsonBox'),msg=$('copyMsg');
   const fallback=()=>{box.value=txt;box.classList.add('on');box.focus();box.select();msg.textContent='Clipboard unavailable. Copy the settings below (Ctrl/Cmd+C).';};
   try{
