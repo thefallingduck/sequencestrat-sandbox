@@ -13,13 +13,15 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 | File | What it is |
 | --- | --- |
 | `index.html` | The whole interface: controls, presets, section raster, pseudo-wells, sea-level chart, exercise mode |
-| `seqstrat.js` | Model engine (UMD: `window.SeqStrat` in the browser, `module.exports` in Node). Exports `DEFAULTS`, `simulate`, `eustasy`, `subsidenceRate` |
+| `seqstrat.js` | Model engine (UMD: `window.SeqStrat` in the browser, `module.exports` in Node). Exports `DEFAULTS`, `simulate`, `eustasy`, `subsidenceRate`. `snapshotFrames` (off by default) records snapshots for the animation without changing the run |
 | `worker.js` | Web Worker that runs `simulate` off the main thread. `index.html` falls back to running on the page if workers are blocked |
 | `wheeler.js` | Wheeler diagram drawing and hover (`drawWheeler`, `wheelerHitTest`, `wheelerClassify`) |
 | `ratescale.js` | Preserved accumulation rate (mm/kyr) and its log colour scale (UMD: `window.RateScale` / `module.exports`), used by "Colour by: Accumulation rate" |
-| `tests/engine.test.js` | Node test suite for the engine (86 tests) |
+| `gifwriter.js` | Small animated-GIF encoder written for this project (no third-party code), used by "Export GIF" in the animation panel |
+| `tests/engine.test.js` | Node test suite for the engine (90 tests) |
 | `tests/ratescale.test.js` | Node tests for the rate calculation and colour scale (13 tests) |
-| `tests/ui_smoke.py` | Playwright browser smoke test (12 checks) |
+| `tests/gifwriter.test.js` | Node tests for the GIF encoder, including an LZW round trip (8 tests) |
+| `tests/ui_smoke.py` | Playwright browser smoke test (13 checks) |
 | `tools/presets/` | Parameter-search scripts used to tune the presets |
 | `docs/NOTES_next_steps.md` | The instructor's plan for future work. Read it before starting larger changes |
 
