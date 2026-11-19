@@ -43,6 +43,12 @@ h1{font:600 clamp(26px,4vw,36px)/1.05 var(--f-head);margin:0 0 4px;letter-spacin
 .cv-wrap{position:relative;width:100%}
 .cv-wrap canvas{display:block}
 #secOver{position:absolute;left:0;top:0;cursor:crosshair;touch-action:pan-y}
+#secOver.zoomed{cursor:grab;touch-action:none}
+#secOver.zoomed.dragging{cursor:grabbing}
+.zoombar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
+.zoombar button{padding:4px 10px;min-height:30px;font-size:13px}
+.zoombar button:disabled{opacity:.45;cursor:default}
+.zoombar button:disabled:hover{border-color:var(--line)}
 .readout{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:10px;min-height:44px;align-items:center;font-size:14px}
 .readout .hint{color:var(--muted)}
 .kv{display:flex;gap:6px;align-items:baseline}
@@ -202,6 +208,11 @@ dialog p{margin:0 0 10px}
       </div>
       <section class="card" id="secCard" aria-label="Cross-section">
         <h2>Dip section</h2>
+        <div class="zoombar" role="group" aria-label="Zoom the dip section">
+          <button id="zoomIn" type="button">Zoom in</button>
+          <button id="zoomOut" type="button" disabled>Zoom out</button>
+          <button id="zoomReset" type="button" disabled>Reset view</button>
+        </div>
         <div class="cv-wrap" id="secWrap">
           <canvas id="secBase" role="img" aria-label="Stratigraphic cross-section coloured by sand content"></canvas>
           <canvas id="secOver" aria-hidden="true"></canvas>
@@ -209,7 +220,7 @@ dialog p{margin:0 0 10px}
         <div class="readout" id="readout" aria-live="polite"></div>
         <div class="status"><span class="pill" id="pill" role="status">Running&hellip;</span><span id="status">Starting&hellip;</span></div>
         <div class="warnline" id="edgeWarn" role="status" hidden>Sediment is reaching the far edge of the basin, so results near the edge are affected.</div>
-        <p class="note">Water is drawn at the end-of-run sea level. Click the section to place a pseudo-well (up to two).</p>
+        <p class="note">Water is drawn at the end-of-run sea level. Click the section to place a pseudo-well (up to two). Zoom in with the buttons (or pinch); drag to move around when zoomed in.</p>
         <details class="anim" id="animBox">
           <summary>Animation through time</summary>
           <p class="hintline">Replays the run shown above in about 60 steps: sediment filling the basin, and erosion removing some of it again. Building it re-runs the model in the background, which takes about as long as a normal run. Colours show sand content.</p>
@@ -334,7 +345,7 @@ const PRESETS = {
 function applyPreset(name){applyUI(Object.assign(defaultsUI(),PRESETS[name]||{}));}
 
 /* ---------- state ---------- */
-const S = {r:null,wells:[85,118],hover:null,ms:0,secGeo:null,rafOver:0};
+const S = {r:null,wells:[85,118],hover:null,ms:0,secGeo:null,rafOver:0,zoom:null};
 const flags = ()=>{const ex=$('optExercise').checked;return {
   surf:$('optSurf').checked&&!ex, labels:$('optLabels').checked&&!ex, lines:$('optLines').checked, smooth:$('optSmooth').checked, exercise:ex, wellSep:$('optWellSep').checked,
   colour:colourBy()};};
@@ -394,7 +405,7 @@ function rasterField(r,mode){
 function sectionRaster(G,r,smooth,mode){
   const s=Math.min(1.5,window.devicePixelRatio||1);
   const Wp=Math.max(1,Math.round(G.pw*s)),Hp=Math.max(1,Math.round(G.ph*s));
-  const key=[r.params.duration,r.nLayers,G.pw,G.ph,G.x1,G.y0,G.y1,smooth,s,mode].join('|');
+  const key=[r.params.duration,r.nLayers,G.pw,G.ph,G.x0,G.x1,G.y0,G.y1,smooth,s,mode].join('|');
   if(rasterCache&&rasterCache.r===r&&rasterCache.key===key)return rasterCache.cv;
   const K=r.nLayers,N=r.x.length,dx=r.dx,x0=r.x[0];
   const F=rasterField(r,mode),sand=F.vals,hz=r.horizons,base=r.basement;
@@ -505,7 +516,7 @@ function legendFitsOneRow(W,narrow,mode){
   // left margin + surface key + gap + bar title + 12 + bar + 52 (room for the last tick label) + right margin
   return ml+surf+16+title+12+barW+52+mr<=W;
 }
-function layoutSection(W,r,mode){
+function layoutSection(W,r,mode,noZoom){
   const narrow=W<560;
   const stackLeg=!legendFitsOneRow(W,narrow,mode);   // surface key and colour bar on two rows if one is too tight
   const legendH=stackLeg?92:58;
@@ -514,7 +525,14 @@ function layoutSection(W,r,mode){
   const H=plotTotal+legendH;
   const xv=viewRange(r);
   const [y0,y1]=ylim(r,xv);
-  return {W,H,ml,mr,mt,mb,narrow,stackLeg,legendH,pw:W-ml-mr,ph:plotTotal-mt-mb,y0,y1,x0:0,x1:xv,plotTotal};
+  const G={W,H,ml,mr,mt,mb,narrow,stackLeg,legendH,pw:W-ml-mr,ph:plotTotal-mt-mb,y0,y1,x0:0,x1:xv,plotTotal,full:{x0:0,x1:xv,y0,y1}};
+  const z=noZoom?null:S.zoom;
+  if(z){   // student zoom: replace the view window, clamped inside the full view
+    const w=Math.min(xv,Math.max(1,z.x1-z.x0)),h=Math.min(y1-y0,Math.max(1,z.y1-z.y0));
+    G.x0=Math.max(0,Math.min(xv-w,z.x0));G.x1=G.x0+w;
+    G.y0=Math.max(y0,Math.min(y1-h,z.y0));G.y1=G.y0+h;
+  }
+  return G;
 }
 const gx=(G,x)=>G.ml+(x-G.x0)/(G.x1-G.x0)*G.pw;
 const gy=(G,z)=>G.mt+(G.y1-z)/(G.y1-G.y0)*G.ph;
@@ -694,6 +712,7 @@ function drawOverlay(ctx,G,r,hover,wells,T){
   ctx.restore();
   wells.forEach((w,idx)=>{
     const x=gx(G,r.x[w]);
+    if(x<G.ml||x>G.ml+G.pw)return;   // well is outside the zoomed window
     ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,.7)';ctx.lineWidth=1;
     rrect(ctx,x-10,G.mt+3,20,18,4);ctx.fill();ctx.stroke();
     ctx.fillStyle='#1a1a16';ctx.font='700 13px '+T.head;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(wellLabel(idx),x,G.mt+12.5);
@@ -980,6 +999,44 @@ function renderSection(){
   drawSection(ctx,G,r,flags(),theme());
   const oc=fitCanvas($('secOver'),G.W,G.H);
   drawOverlay(oc,G,r,S.hover,S.wells,theme());
+  syncZoomUI(G);
+}
+function syncZoomUI(G){
+  const z=!!S.zoom,F=G.full,minW=Math.min(5000,F.x1-F.x0);
+  $('zoomIn').disabled=(G.x1-G.x0)<=minW*1.0001;
+  $('zoomOut').disabled=!z;$('zoomReset').disabled=!z;
+  $('secOver').classList.toggle('zoomed',z);
+  if(!z)$('secOver').classList.remove('dragging');
+}
+/* zoom: factor>1 zooms in. (fx,fy) is the fixed point as a fraction of the plot (default: centre). The window keeps the full view's aspect. */
+function setZoom(win){
+  const G=S.secGeo;if(!G)return;
+  const F=G.full;
+  if(!win||(win.x1-win.x0)>=(F.x1-F.x0)*0.9999)S.zoom=null;else S.zoom=win;
+  S.hover=null;updateReadout(null);
+  renderSection();
+}
+function zoomBy(factor,fx,fy){
+  const G=S.secGeo;if(!G)return;
+  if(fx==null)fx=0.5;if(fy==null)fy=0.5;
+  const F=G.full,FW=F.x1-F.x0,FH=F.y1-F.y0;
+  const cw=G.x1-G.x0,ch=G.y1-G.y0;
+  const nw=Math.min(FW,Math.max(Math.min(5000,FW),cw/factor));
+  const nh=nw/FW*FH;
+  if(nw>=FW*0.9999){setZoom(null);return;}
+  const ax=G.x0+fx*cw,ay=G.y1-fy*ch;
+  let x0=ax-fx*nw,y1=ay+fy*nh;
+  x0=Math.max(F.x0,Math.min(F.x1-nw,x0));
+  y1=Math.max(F.y0+nh,Math.min(F.y1,y1));
+  setZoom({x0,x1:x0+nw,y0:y1-nh,y1});
+}
+function panBy(dxPx,dyPx,start){
+  const G=S.secGeo;if(!G||!start)return;
+  const F=G.full,w=start.x1-start.x0,h=start.y1-start.y0;
+  let x0=start.x0-dxPx/G.pw*w,y0=start.y0+dyPx/G.ph*h;
+  x0=Math.max(F.x0,Math.min(F.x1-w,x0));y0=Math.max(F.y0,Math.min(F.y1-h,y0));
+  S.zoom={x0,x1:x0+w,y0,y1:y0+h};
+  renderSection();
 }
 function renderOverlay(){
   const r=S.r,G=S.secGeo;if(!r||!G)return;
@@ -1053,9 +1110,46 @@ function onMove(e){
 }
 const ov=$('secOver');
 ov.addEventListener('pointermove',onMove);
-ov.addEventListener('pointerdown',onMove);
+ov.addEventListener('pointerdown',e=>{
+  onMove(e);
+  S.drag=null;S.dragged=false;
+  if(S.zoom&&S.secGeo&&e.button===0){
+    const G=S.secGeo;
+    S.drag={id:e.pointerId,cx:e.clientX,cy:e.clientY,win:{x0:G.x0,x1:G.x1,y0:G.y0,y1:G.y1},moved:false};
+    try{ov.setPointerCapture(e.pointerId);}catch(_){}
+  }
+});
+ov.addEventListener('pointermove',e=>{
+  const d=S.drag;if(!d||d.id!==e.pointerId||!S.zoom)return;
+  const dx=e.clientX-d.cx,dy=e.clientY-d.cy;
+  if(!d.moved&&Math.hypot(dx,dy)<4)return;
+  if(!d.moved){d.moved=true;S.dragged=true;ov.classList.add('dragging');}
+  S.hover=null;updateReadout(null);
+  cancelAnimationFrame(S.rafPan);
+  S.rafPan=requestAnimationFrame(()=>panBy(dx,dy,d.win));
+});
+function endDrag(e){
+  const d=S.drag;if(!d||d.id!==e.pointerId)return;
+  if(d.moved){cancelAnimationFrame(S.rafPan);panBy(e.clientX-d.cx,e.clientY-d.cy,d.win);}
+  S.drag=null;ov.classList.remove('dragging');
+  try{ov.releasePointerCapture(e.pointerId);}catch(_){}
+}
+ov.addEventListener('pointerup',endDrag);
+ov.addEventListener('pointercancel',endDrag);
 ov.addEventListener('pointerleave',()=>{S.hover=null;updateReadout(null);renderOverlay();});
+ov.addEventListener('wheel',e=>{
+  if(!e.ctrlKey||!S.secGeo)return;   // plain wheel keeps scrolling the page
+  e.preventDefault();
+  const G=S.secGeo,rc=ov.getBoundingClientRect();
+  const fx=Math.max(0,Math.min(1,(e.clientX-rc.left-G.ml)/G.pw)),fy=Math.max(0,Math.min(1,(e.clientY-rc.top-G.mt)/G.ph));
+  const dy=e.deltaMode===1?e.deltaY*16:e.deltaY;
+  zoomBy(Math.exp(-Math.max(-60,Math.min(60,dy))*0.01),fx,fy);
+},{passive:false});
+$('zoomIn').addEventListener('click',()=>zoomBy(2));
+$('zoomOut').addEventListener('click',()=>zoomBy(0.5));
+$('zoomReset').addEventListener('click',()=>setZoom(null));
 ov.addEventListener('click',e=>{
+  if(S.dragged){S.dragged=false;return;}
   const h=pointerInfo(e);if(!h)return;
   const i=h.hit.i;
   if(S.wells.indexOf(i)>=0)return;
@@ -1084,7 +1178,7 @@ function animStop(){clearInterval(A.timer);A.timer=0;$('animPlay').textContent='
 /* fixed axes for the whole animation: the final view range, with elevations wide enough for
    every frame (earlier frames sit higher before later subsidence, and sea level moves) */
 function animGeo(W){
-  const r=A.r,F=animFrames(),G=layoutSection(W,r,'sand');
+  const r=A.r,F=animFrames(),G=layoutSection(W,r,'sand',true);
   const N=Math.min(r.x.length,Math.ceil(G.x1/r.dx)+2);
   let lo=Infinity,hi=-Infinity;
   F.forEach(f=>{const T=f.top,off=(f.nb-1)*r.x.length;
@@ -1267,7 +1361,7 @@ function finishRun(r,ms,err){
   S.running=false;
   $('pill').classList.remove('on');$('pill').textContent='Running\u2026';
   if(err){$('status').textContent='Model error: '+err;return;}
-  S.r=r;S.ms=ms;
+  S.r=r;S.ms=ms;S.zoom=null;
   const nSeq=r.surfaces.filter(s=>s.type==='SB').length;
   $('status').textContent='Run time '+Math.round(ms)+' ms · mass balance error '+r.massBalance.error.toExponential(1)+' · '+nSeq+' sequence'+(nSeq===1?'':'s')+' (SB count) · '+r.nLayers+' layers · far-edge sediment '+(100*r.edgeFraction).toFixed(1)+'% · exported to deep basin '+(100*(r.exportedFraction||0)).toFixed(1)+'%';
   $('edgeWarn').hidden=!(r.edgeFraction>0.02);
@@ -1326,7 +1420,7 @@ CTL.forEach(c=>c.input.addEventListener('input',()=>{
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
 $('resetBtn').addEventListener('click',()=>{$('preset').value='default';applyPreset('default');setDirty(false);schedule();});
-['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{renderSection();renderWheeler();if(id==='optSurf')renderWells();}));
+['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='optWhole')S.zoom=null;renderSection();renderWheeler();if(id==='optSurf')renderWells();}));
 function syncExercise(){
   const ex=$('optExercise').checked;
   $('banner').hidden=!ex;
