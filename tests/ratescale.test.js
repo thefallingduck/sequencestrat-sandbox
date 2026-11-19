@@ -86,28 +86,52 @@ describe('layerLogRates on the DEFAULTS run', () => {
 });
 
 describe('colour scale', () => {
-  test('ratePos maps 0.1..1000 mm/kyr onto 0..1 and clamps', () => {
+  test('ratePos clamps and hits the edges', () => {
     assert.equal(RS.ratePos(0.1), 0);
-    assert.equal(RS.ratePos(1000), 1);
-    close(RS.ratePos(10), 0.5, 1e-12);
     assert.equal(RS.ratePos(0.01), 0);
-    assert.equal(RS.ratePos(1e5), 1);
     assert.equal(RS.ratePos(0), 0);
+    assert.equal(RS.ratePos(30000), 1);
+    assert.equal(RS.ratePos(1e6), 1);
+    RS.RATE_EDGES.forEach((edge, j) => {
+      close(RS.ratePos(edge), j / 8, 1e-12);
+    });
   });
 
-  test('rateRGB uses the end stops at 0.1 and 1000 mm/kyr', () => {
-    assert.deepEqual(RS.rateRGB(0.1), RS.RATE_STOPS[0]);
-    assert.deepEqual(RS.rateRGB(1000), RS.RATE_STOPS[4]);
+  test('inside a band the position is log-linear', () => {
+    close(RS.ratePos(Math.sqrt(10 * 100)), 2.5 / 8, 1e-12);
+    close(RS.ratePos(Math.sqrt(1000 * 3000)), 5.5 / 8, 1e-12);
   });
 
-  test('LUT has 256 entries', () => {
+  test('each band gets its own flat colour', () => {
+    const cases = [
+      [0.5, 0], [5, 1], [50, 2], [150, 3], [500, 4],
+      [2000, 5], [5000, 6], [20000, 7], [1e6, 7], [0.01, 0],
+    ];
+    for (const [rate, band] of cases) {
+      assert.deepEqual(RS.rateRGB(rate), RS.RATE_STOPS[band], `rate ${rate} should be band ${band}`);
+    }
+  });
+
+  test('8 stops, 256-entry LUT whose ends match the first and last stop, at most 8 distinct colours', () => {
+    assert.equal(RS.RATE_STOPS.length, 8);
     assert.equal(RS.LUT.length, 256);
+    assert.deepEqual(RS.LUT[0], RS.RATE_STOPS[0]);
+    assert.deepEqual(RS.LUT[255], RS.RATE_STOPS[7]);
+    const distinct = new Set(RS.LUT.map((c) => c.join(',')));
+    assert.ok(distinct.size <= 8, `LUT has ${distinct.size} distinct colours`);
   });
 
-  test('ramp gets steadily lighter from slow to fast (relative luminance rises)', () => {
+  test('bands get steadily lighter from slow to fast (relative luminance rises)', () => {
     const lum = RS.RATE_STOPS.map(([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b);
     for (let i = 1; i < lum.length; i++) {
       assert.ok(lum[i] > lum[i - 1], `stop ${i} luminance ${lum[i]} not above ${lum[i - 1]}`);
+    }
+  });
+
+  test('RATE_TICKS equals RATE_EDGES, and the edges strictly increase', () => {
+    assert.deepEqual(RS.RATE_TICKS, RS.RATE_EDGES);
+    for (let i = 1; i < RS.RATE_EDGES.length; i++) {
+      assert.ok(RS.RATE_EDGES[i] > RS.RATE_EDGES[i - 1], `edge ${i} not above edge ${i - 1}`);
     }
   });
 });
