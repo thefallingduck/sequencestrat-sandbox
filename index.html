@@ -1103,23 +1103,39 @@ function drawAnimFrame(ctx,G,f,T){
   ctx.fillStyle='#45473d';ctx.beginPath();ctx.moveTo(px[0],gy(G,G.y0));
   for(let i=0;i<N;i++)ctx.lineTo(px[i],gy(G,B[i]));
   ctx.lineTo(px[N-1],gy(G,G.y0));ctx.closePath();ctx.fill();
-  // sediment bands, coloured by sand content (interpolated between columns, like the section)
+  // sediment bands, coloured by sand content with the same along-bed blending as the section
+  // (sectionRaster): inverse-distance-squared weighting of nearby band cells, measured in columns
+  // and bands x ANISO, so colours blend along beds rather than across them. "Smooth along beds"
+  // off shows the raw cells, as in the section.
   const sc=Math.min(1.5,window.devicePixelRatio||1),Wp=Math.max(1,Math.round(G.pw*sc)),Hp=Math.max(1,Math.round(G.ph*sc));
-  const img=new ImageData(Wp,Hp),d=img.data,zr=z=>(G.y1-z)/(G.y1-G.y0)*Hp;
+  const img=new ImageData(Wp,Hp),d=img.data,smooth=$('optSmooth').checked,sand=f.sand;
+  const topC=new Float64Array(nb),botC=new Float64Array(nb);
   for(let c=0;c<Wp;c++){
     const xm=G.x0+(c+0.5)/Wp*(G.x1-G.x0),fi=Math.max(0,Math.min(Ncol-1.000001,(xm-x0)/dx));
-    const i0=Math.floor(fi),u=fi-i0,i1=Math.min(Ncol-1,i0+1),inear=u<0.5?i0:i1;
-    const b=B[i0]*(1-u)+B[i1]*u;let below=b;
-    for(let k=0;k<nb;k++){
-      const o=k*Ncol,zt=b+top[o+i0]*(1-u)+top[o+i1]*u;
-      if(zt-below>1e-6){
-        const sf=f.sand[o+inear];
-        if(sf===sf){
-          const col=SAND_LUT[sandIdx(sf)],r0=Math.max(0,Math.floor(zr(zt))),r1=Math.min(Hp,Math.ceil(zr(below)));
-          for(let rr=r0;rr<r1;rr++){const q=(rr*Wp+c)*4;d[q]=col[0];d[q+1]=col[1];d[q+2]=col[2];d[q+3]=255;}
+    const i0=Math.floor(fi),u=fi-i0,i1=Math.min(Ncol-1,i0+1);
+    const b=B[i0]*(1-u)+B[i1]*u;let prev=b;
+    for(let k=0;k<nb;k++){const tp=Math.max(prev,b+top[k*Ncol+i0]*(1-u)+top[k*Ncol+i1]*u);botC[k]=prev;topC[k]=tp;prev=tp;}
+    const surf=prev;let k=0;
+    for(let rr=Hp-1;rr>=0;rr--){            // bottom row upward, so the band index only increases
+      const z=G.y1-(rr+0.5)/Hp*(G.y1-G.y0);
+      if(z<b)continue;
+      if(z>surf)break;
+      while(k<nb-1&&topC[k]<z)k++;
+      const th=topC[k]-botC[k],lk=k+(th>1e-9?(z-botC[k])/th:0.5);
+      let val=NaN;
+      if(smooth){
+        let ws=0,vs=0;
+        const ca=Math.max(0,i0-3),cb=Math.min(Ncol-1,i0+4),la=Math.max(0,k-1),lb=Math.min(nb-1,k+1);
+        for(let l=la;l<=lb;l++){
+          const o=l*Ncol,dl=(l+0.5-lk)*ANISO,dl2=dl*dl;
+          for(let ci=ca;ci<=cb;ci++){const v=sand[o+ci];if(v!==v)continue;const dc=ci-fi,w=1/Math.max(dc*dc+dl2,1e-6);ws+=w;vs+=w*v;}
         }
-        below=zt;
+        if(ws>0)val=vs/ws;
       }
+      if(val!==val){const a=sand[k*Ncol+(u<0.5?i0:i1)],bb=sand[k*Ncol+(u<0.5?i1:i0)];val=a===a?a:bb;}
+      if(val!==val)continue;
+      const col=SAND_LUT[sandIdx(val)],q=(rr*Wp+c)*4;
+      d[q]=col[0];d[q+1]=col[1];d[q+2]=col[2];d[q+3]=255;
     }
   }
   const cv=document.createElement('canvas');cv.width=Wp;cv.height=Hp;cv.getContext('2d').putImageData(img,0,0);
@@ -1326,7 +1342,7 @@ CTL.forEach(c=>c.input.addEventListener('input',()=>{
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
 $('resetBtn').addEventListener('click',()=>{$('preset').value='default';applyPreset('default');setDirty(false);schedule();});
-['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{renderSection();renderWheeler();if(id==='optSurf')renderWells();}));
+['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{renderSection();renderWheeler();if(id==='optSurf')renderWells();if(id==='optSmooth')renderAnim();}));
 function syncExercise(){
   const ex=$('optExercise').checked;
   $('banner').hidden=!ex;
