@@ -166,10 +166,25 @@ dialog p{margin:0 0 10px}
           <p id="dirty" class="dirty" role="status" hidden>Settings changed. Press Run model to update.</p>
         </div>
         <fieldset><legend>Sea level</legend>
+          <div class="ctl" style="grid-template-columns:1fr">
+            <label for="slSource">Sea-level forcing</label>
+            <select id="slSource">
+              <option value="sine">Sine cycles (set below)</option>
+              <option value="record">Real record: Berends et al. (2021), last 3.6 Myr</option>
+            </select>
+          </div>
+          <div id="g-rec" hidden>
+            <div class="ctl"><label for="c-recStart">Run starts</label><output for="c-recStart" id="o-recStart"></output>
+              <input type="range" id="c-recStart" min="10" max="3599" step="1" value="240"></div>
+            <p class="hintline">Sea level follows the global record reconstructed by <a href="https://doi.org/10.5194/cp-17-361-2021" target="_blank" rel="noopener">Berends et al. (2021)</a> (data <a href="https://doi.org/10.5281/zenodo.3793592" target="_blank" rel="noopener">CC BY 4.0</a>), forward from the start time, in place of the sine cycles. Starting level and long-term trend still apply. Glacial cycles of the last million years swing sea level by about 100 m.</p>
+            <p class="warnline" id="recWarn" role="status" hidden></p>
+          </div>
+          <div id="g-cycles">
           <p class="hintline">Cycle orders are compressed in time for teaching.</p>
           <div class="sub-head">Short cycle (3rd-order-like)</div><div id="g-sea"></div>
           <details class="sub" id="d-sea2"><summary>Medium cycle (2nd-order-like)</summary><div id="g-sea2"></div></details>
           <details class="sub" id="d-sea3"><summary>Long cycle (1st-order-like)</summary><div id="g-sea3"></div></details>
+          </div>
           <div class="trendgrp" id="g-sea4"></div>
         </fieldset>
         <fieldset><legend>Basin &amp; subsidence</legend><div id="g-sub"></div></fieldset>
@@ -257,7 +272,7 @@ dialog p{margin:0 0 10px}
       <section class="card how" id="howCard">
         <details>
           <summary>How the model works</summary>
-          <p>The model is a 2D dip section: sediment enters at the landward (left) edge and is redistributed by diffusion that is fast on the coastal plain and at the shoreface, then decays with water depth offshore, which builds prograding clinoforms. Random flood pulses bring more, and sandier, sediment for a while. Together, eustasy and subsidence give relative sea level at the shoreline.</p>
+          <p>The model is a 2D dip section: sediment enters at the landward (left) edge and is redistributed by diffusion that is fast on the coastal plain and at the shoreface, then decays with water depth offshore, which builds prograding clinoforms. Random flood pulses bring more, and sandier, sediment for a while. Together, eustasy and subsidence give relative sea level at the shoreline. Eustasy is either the sum of the sine cycles you set, or a real reconstruction of global sea level over the last 3.6 million years (Berends et al., 2021).</p>
           <p>Eustasy is the sum of a long-term trend and up to three sine cycles (short, medium and long), loosely like 3rd-, 2nd- and 1st-order cycles but compressed in time for teaching. The basin is 300 km long and the section view zooms to where the sediment is (tick <em>Show whole basin</em> to see all of it). The far edge is open: the thin mud film that creeps along the deep basin floor passes out of the model instead of piling against a wall, and the status line reports how much left. The initial shoreline sets where sea level meets the sloping basement at the start of the run. Subsidence is zero landward of the hinge and increases linearly seaward of it; the slider sets the rate at 150 km, and the rate keeps increasing beyond that.</p>
           <p>While relative sea level falls, rivers erode the coastal plain more efficiently, standing in for flow confined to incised valleys. The <em>Fall-stage river erosion</em> control sets how much stronger (1× turns it off). Stronger erosion truncates more of the older topsets beneath the sequence boundary and delivers more sediment to the falling-stage shoreline.</p>
           <p>Waves rework the shoreface. Between the shoreline and the depth set by <em>Wave base</em>, marine transport pushes the bed toward an equilibrium shoreface profile that deepens seaward at the <em>Shoreface gradient</em>, instead of toward a flat bed. When rising sea level drowns the gentle coastal plain, it is too shallow for that profile and waves cut it down, carrying fines offshore faster than sand. That erosion sweeps landward with the shoreline and forms the wave ravinement surface (WRS), drawn for each transgression where waves removed at least 0.3 m. At a stillstand the shoreface sits at equilibrium and waves erode little. Set Wave base to 0 to turn this off.</p>
@@ -281,6 +296,7 @@ dialog p{margin:0 0 10px}
 <script src="ratescale.js"></script>
 <script src="wheeler.js"></script>
 <script src="gifwriter.js"></script>
+<script src="sealevel_record.js"></script>
 <script>
 (function(){
 'use strict';
@@ -332,7 +348,28 @@ function setCtl(id,v){const c=byId[id];c.input.value=v;c.out.textContent=fmtVal(
 function defaultsUI(){const o={};CTL.forEach(c=>{o[c.id]=+(c.from(DEF[c.key]).toFixed(6));});return o;}
 function syncDetails(){[['amp2','d-sea2'],['amp3','d-sea3']].forEach(([a,d])=>{if(parseFloat(byId[a].input.value)>0)$(d).open=true;});}
 function applyUI(vals){CTL.forEach(c=>setCtl(c.id,vals[c.id]));syncDetails();updateDurWarn();}
-function params(){const p={};CTL.forEach(c=>{p[c.key]=c.to(parseFloat(c.input.value));});return p;}
+function params(){const p={};CTL.forEach(c=>{p[c.key]=c.to(parseFloat(c.input.value));});
+  if(useRecord())p.seaLevelCurve=recordCurve(p);
+  return p;}
+/* ---------- real sea-level record (Berends et al. 2021) ---------- */
+const useRecord=()=>$('slSource').value==='record'&&!!window.SeaLevelRecord;
+const recStartKa=()=>parseInt($('c-recStart').value,10);
+/* the record's change in sea level since the start time, added to the starting level and trend; one point per kyr */
+function recordCurve(p){
+  const R=window.SeaLevelRecord,S0=recStartKa(),base=R.at(S0),c=[];
+  const z0=p.seaLevelStart!=null?p.seaLevelStart:DEF.seaLevelStart,tr=p.seaLevelTrend!=null?p.seaLevelTrend:DEF.seaLevelTrend;
+  for(let t=0;t<=p.duration+1000;t+=1000)c.push([t,z0+tr*t/1000+R.at(S0-t/1000)-base]);
+  return c;
+}
+function syncRecordUI(){
+  const rec=$('slSource').value==='record',S0=recStartKa(),dur=parseFloat(byId.dur.input.value);
+  $('g-rec').hidden=!rec;$('g-cycles').hidden=rec;
+  $('o-recStart').textContent=S0>=1000?(S0/1000).toFixed(2)+' Ma ago':S0+' ka ago';
+  const w=$('recWarn');
+  if(rec&&dur>S0){w.textContent='This run ('+dur+' kyr) is longer than the time since its start, so sea level stays at its present-day value for the last '+(dur-S0)+' kyr.';w.hidden=false;}
+  else w.hidden=true;
+}
+function setSource(v){$('slSource').value=v;syncRecordUI();}
 const PRESETS = {
   'default':{},
   'forced':{amp:20,period:160,dur:240,supply:15},
@@ -342,7 +379,7 @@ const PRESETS = {
   'ref':{dur:600,amp:15,period:120,amp2:8,period2:400,phase2:180,amp3:25,period3:1200,phase3:0,supply:20,subs:0.3},
   'tilt':{amp:0,trend:0,subs:0.3,hinge:40}
 };
-function applyPreset(name){applyUI(Object.assign(defaultsUI(),PRESETS[name]||{}));}
+function applyPreset(name){setSource('sine');applyUI(Object.assign(defaultsUI(),PRESETS[name]||{}));}
 
 /* ---------- state ---------- */
 const S = {r:null,wells:[85,118],hover:null,ms:0,secGeo:null,rafOver:0,zoom:null};
@@ -587,7 +624,7 @@ function drawSection(ctx,G,r,fl,T){
   let firstWet=-1;
   // one polygon per wet stretch (no seams between columns)
   let i0=0;
-  while(i0<N){
+  while(i0<N&&sl===sl){   // sl===sl: a NaN sea level would never advance this loop
     while(i0<N&&r.surface[i0]>=sl)i0++;
     if(i0>=N)break;
     let i1=i0;while(i1<N&&r.surface[i1]<sl)i1++;
@@ -1447,8 +1484,11 @@ function updateDurWarn(){
 }
 CTL.forEach(c=>c.input.addEventListener('input',()=>{
   c.out.textContent=fmtVal(c,c.input.value);$('preset').value='custom';setDirty(true);
-  if(c.id==='dur')updateDurWarn();
+  if(c.id==='dur'){updateDurWarn();syncRecordUI();}
 }));
+$('slSource').addEventListener('change',()=>{syncRecordUI();$('preset').value='custom';setDirty(true);});
+$('c-recStart').addEventListener('input',()=>{syncRecordUI();$('preset').value='custom';setDirty(true);});
+syncRecordUI();
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
 $('resetBtn').addEventListener('click',()=>{$('preset').value='default';applyPreset('default');setDirty(false);schedule();});
@@ -1474,7 +1514,9 @@ $('revealBtn').addEventListener('click',()=>{$('optExercise').checked=false;sync
 
 /* ---------- copy / export ---------- */
 $('copyBtn').addEventListener('click',()=>{
-  const txt=JSON.stringify(params(),null,2),box=$('jsonBox'),msg=$('copyMsg');
+  const pj=params();
+  if(pj.seaLevelCurve){delete pj.seaLevelCurve;pj.seaLevelForcing='Berends et al. (2021) record, starting '+recStartKa()+' ka before present';}
+  const txt=JSON.stringify(pj,null,2),box=$('jsonBox'),msg=$('copyMsg');
   const fallback=()=>{box.value=txt;box.classList.add('on');box.focus();box.select();msg.textContent='Clipboard unavailable. Copy the settings below (Ctrl/Cmd+C).';};
   try{
     if(navigator.clipboard&&navigator.clipboard.writeText){
