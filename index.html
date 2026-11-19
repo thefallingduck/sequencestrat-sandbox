@@ -462,9 +462,24 @@ function ylim(r,xv){
   hi=Math.max(hi,r.seaLevel);
   return [Math.floor((lo-4)/10)*10, Math.ceil((hi+5)/10)*10];
 }
+/* Does the section legend (surface key on the left, colour bar with its title on the right)
+   fit on one row at canvas width W? Measures the same text drawLegend draws, so it holds for
+   any font and either colour mode, instead of relying on a fixed width threshold. */
+let legendMeasureCtx=null;
+function legendFitsOneRow(W,narrow,mode){
+  if(narrow)return false;
+  const c=legendMeasureCtx||(legendMeasureCtx=document.createElement('canvas').getContext('2d'));
+  c.font='600 12px '+theme().body;
+  let surf=c.measureText('Surfaces').width+12;
+  SURF_ORDER.forEach(t=>{surf+=34+6+c.measureText(t).width+16;});
+  const title=c.measureText(mode==='rate'?'Preserved rate (mm/kyr)':'Sand content').width;
+  const ml=56,mr=16,barW=260;
+  // left margin + surface key + gap + bar title + 12 + bar + 52 (room for the last tick label) + right margin
+  return ml+surf+16+title+12+barW+52+mr<=W;
+}
 function layoutSection(W,r,mode){
   const narrow=W<560;
-  const stackLeg=W<(mode==='rate'?880:780);   // too narrow for the surface key and the colour bar on one row
+  const stackLeg=!legendFitsOneRow(W,narrow,mode);   // surface key and colour bar on two rows if one is too tight
   const legendH=stackLeg?92:58;
   const ml=narrow?44:56,mr=narrow?10:16,mt=10,mb=narrow?36:42;
   const plotTotal=Math.round(W/(narrow?1.5:2.2));
