@@ -18,7 +18,7 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 | `wheeler.js` | Wheeler diagram drawing and hover (`drawWheeler`, `wheelerHitTest`, `wheelerClassify`) |
 | `ratescale.js` | Preserved accumulation rate (mm/kyr) and its log colour scale (UMD: `window.RateScale` / `module.exports`), used by "Colour by: Accumulation rate" |
 | `gifwriter.js` | Small animated-GIF encoder written for this project (no third-party code), used by "Export GIF" in the animation panel |
-| `tests/engine.test.js` | Node test suite for the engine (90 tests) |
+| `tests/engine.test.js` | Node test suite for the engine (92 tests) |
 | `tests/ratescale.test.js` | Node tests for the rate calculation and colour scale (13 tests) |
 | `tests/gifwriter.test.js` | Node tests for the GIF encoder, including an LZW round trip (8 tests) |
 | `tests/ui_smoke.py` | Playwright browser smoke test (14 checks) |
