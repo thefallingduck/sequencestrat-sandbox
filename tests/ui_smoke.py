@@ -294,6 +294,13 @@ def main():
             page.check('input[name="colourBy"][value="sand"]')
             time.sleep(0.6)
             h_back = [md5(page.evaluate(CANVAS_HASH_JS, i)) for i in ids]
+            # systems tract colouring changes all three views too
+            page.check('input[name="colourBy"][value="tract"]')
+            time.sleep(0.6)
+            h_tract = [md5(page.evaluate(CANVAS_HASH_JS, i)) for i in ids]
+            page.check('input[name="colourBy"][value="sand"]')
+            time.sleep(0.6)
+            tract_ok = all(a != b and a != c for a, b, c in zip(h_tract, h_sand, h_rate))
             # exercise mode must colour by sand content even when rate is chosen
             page.click("#optExercise")
             time.sleep(0.6)
@@ -313,10 +320,11 @@ def main():
             check(
                 "11 colour by accumulation rate",
                 all(a != b for a, b in zip(h_sand, h_rate)) and h_back == h_sand
-                and ex_sand and no_run and len(errors) == n_err,
+                and ex_sand and tract_ok and no_run and len(errors) == n_err,
                 f"changed section/wheeler/wells={[a != b for a, b in zip(h_sand, h_rate)]}, "
                 f"back to sand identical={h_back == h_sand}, exercise forces sand={h_ex_rate == h_ex_sand}, "
                 f"radios disabled in exercise={radios_off}, rate restored after exercise={h_after == h_rate[0]}, "
+                f"tract changes all three={tract_ok}, "
                 f"no run started={no_run}, new errors={len(errors)-n_err}",
             )
 

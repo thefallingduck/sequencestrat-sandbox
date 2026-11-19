@@ -93,6 +93,7 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   var c2=cv.getContext('2d'), img=c2.createImageData(iw,ih), d=img.data;
   var cl=classify(r,opts&&opts.minRate), st=cl.st, N=cl.N, sand=cl.sand, rate=cl.rate;
   var byRate=opts.colourBy==='rate'&&!!window.RateScale;
+  var byTract=opts.colourBy==='tract'&&!!opts.tractRGB&&!opts.exercise, tbl=r.tractByLayer;
   var colOf=new Int32Array(iw), kOf=new Int32Array(ih);
   for(var px=0;px<iw;px++) colOf[px]=colAt(r,(px+.5)/iw*xView,xView);
   for(var py=0;py<ih;py++) kOf[py]=layerAt(r,(1-(py+.5)/ih)*dur);
@@ -104,7 +105,8 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
     var k=kOf[py], row=k*N, sfk=sf[k], o=py*iw*4;
     for(px=0;px<iw;px++,o+=4){
       var i=colOf[px], s=st[row+i], c;
-      if(s===1&&byRate) c=window.RateScale.rateRGB(rate[row+i]);
+      if(s===1&&byTract) c=opts.tractRGB[tbl[k]]||opts.tractRGB.none||[136,136,136];
+      else if(s===1&&byRate) c=window.RateScale.rateRGB(rate[row+i]);
       else if(s===1){var f=sand[row+i]; q=f!==f?0:Math.max(0,Math.min(255,Math.round(f*255))); c=lut[q];}
       else c=bg; // no preserved record (eroded, removed later, or never deposited) stays blank
       d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255;
@@ -184,7 +186,8 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   /* --- legend --- */
   var long=!L.narrow;
   var items=[
-    byRate?{k:'pr',t:long?'Preserved sediment (colour = preserved rate)':'Preserved (rate)'}
+    byTract?{k:'pt',t:long?'Preserved sediment (colour = systems tract)':'Preserved (tract)'}
+    :byRate?{k:'pr',t:long?'Preserved sediment (colour = preserved rate)':'Preserved (rate)'}
           :{k:'p',t:long?'Preserved sediment (colour = sand content)':'Preserved (sand content)'},
     {k:'h',t:long?'Gap: less than 0.2 mm/kyr preserved':'Gap (<0.2 mm/kyr)'}];
   ctx.font='11.5px '+body; ctx.textBaseline='middle'; ctx.textAlign='left';
@@ -192,15 +195,17 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   items.forEach(function(it){
     var w=sw+5+ctx.measureText(it.t).width+14;
     if(x0+w-14>W-6&&x0>lx0){x0=lx0;y0+=16;}
-    swatch(ctx,it.k,x0,y0-6,sw,12,T,dark,bg);
+    swatch(ctx,it.k,x0,y0-6,sw,12,T,dark,bg,opts);
     ctx.fillStyle=ink; ctx.fillText(it.t,x0+sw+5,y0);
     x0+=w;
   });
   ctx.restore();
 };
 
-function swatch(ctx,k,x,y,w,h,T,dark,bg){
-  if(k==='pr'){var RS=window.RateScale.RATE_STOPS,bw=w/RS.length;   // one block per rate band
+function swatch(ctx,k,x,y,w,h,T,dark,bg,opts){
+  if(k==='pt'){var TT=['FSST','LST','TST','HST'],tw=w/4;   // one block per tract
+    TT.forEach(function(t,j){var c=opts.tractRGB[t];ctx.fillStyle='rgb('+c.join(',')+')';ctx.fillRect(x+j*tw,y,Math.ceil(tw),h);});}
+  else if(k==='pr'){var RS=window.RateScale.RATE_STOPS,bw=w/RS.length;   // one block per rate band
     RS.forEach(function(c,j){ctx.fillStyle='rgb('+c.join(',')+')';ctx.fillRect(x+j*bw,y,Math.ceil(bw),h);});}
   else if(k==='p'){var g=ctx.createLinearGradient(x,0,x+w,0);for(var j=0;j<=4;j++){var c=sandRGB(j/4*0.8);g.addColorStop(j/4,'rgb('+c.join(',')+')');}ctx.fillStyle=g;ctx.fillRect(x,y,w,h);}
   else if(k==='r'){ctx.fillStyle='rgb('+(dark?C_REMOVED_D:C_REMOVED).join(',')+')';ctx.fillRect(x,y,w,h);
@@ -228,6 +233,7 @@ window.wheelerHitTest=function(r,opts,W,H,cx,cy){
   return {xKm:xm/1000,timeKa:tyr/1000,
     state:['hiatus','preserved','removed','eroding'][s],
     sand:(s===1&&f===f)?f:null,
-    rate:s===1?cl.rate[k*cl.N+i]:null};
+    rate:s===1?cl.rate[k*cl.N+i]:null,
+    layer:k};
 };
 })();
