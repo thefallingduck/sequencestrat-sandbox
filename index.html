@@ -170,6 +170,7 @@ dialog p{margin:0 0 10px}
             <span class="seg-k">Colour by</span>
             <label><input type="radio" name="colourBy" value="sand" checked> Sand content</label>
             <label><input type="radio" name="colourBy" value="rate"> Accumulation rate</label>
+            <label><input type="radio" name="colourBy" value="tract"> Systems tract</label>
             <span class="seg-note" id="colourNote" hidden>Exercise mode shows sand content.</span>
           </div>
           <label class="chk"><input type="checkbox" id="optSurf" checked> Show surfaces</label>
@@ -232,6 +233,7 @@ dialog p{margin:0 0 10px}
           <p>Systems tracts follow the four-tract scheme, from relative sea level and shoreline movement: falling RSL is the FSST; rising RSL with a landward-moving shoreline is the TST; rising RSL with a seaward-moving shoreline is the LST after a fall or the HST after a transgression. Surfaces are placed at the transitions: BSFR at the onset of fall, SB at its end, TS at maximum regression and MFS at maximum transgression. An LST forms only if supply outpaces the early rise. If it cannot, the shoreline retreats as soon as sea level turns, there is no LST, and the TS sits directly on the SB. That is a valid outcome, not an error.</p>
           <p>The section is coloured by sand content. Each model cell is about 1 km wide and covers 1,000 years, so by default colours are blended along beds (inverse-distance-squared weighting, measured in model columns and layers so it does not blend across bedding); untick <em>Smooth along beds</em> to see the raw model cells. The Wheeler diagram shows the same run as distance against time, and only the sediment that is actually preserved, coloured by sand content. Blank areas are gaps in the record, whether nothing was deposited or it was eroded later. Time is grouped into steps of at least 3,000 years, and a step counts as a gap when less than 0.2 mm of sediment per thousand years is preserved from it (slow hemipelagic mud accumulates at roughly 1 to 5 mm per thousand years). Grain size is carried by the sediment itself: sand, silt and clay are moved separately, each bed records how much of each it holds, erosion takes grains from the bed surface in proportion to what is there, and eroded grains keep their size when they are deposited again. Clay travels farthest offshore, sand least. The model saves one layer per thousand years, so very thin beds such as a few-centimetre ravinement lag are averaged into the deposits around them. Limitations: a single dip profile cannot separate incised valleys from interfluves, so sediment that would fill valleys is spread across the whole coastal plain. This is a simplified teaching model inspired by sedflux (Hutton &amp; Syvitski, 2008), not sedflux itself.</p>
           <p><em>Colour by: Accumulation rate</em> colours the section, the Wheeler diagram and the well logs by the <em>preserved</em> accumulation rate instead: how many millimetres of each 1,000-year layer are still there today, in mm per thousand years (the same as metres per million years). The colours come in eight bands on a logarithmic scale from 0.1 to 30,000 mm/kyr, running from dark violet for slow, condensed intervals through magenta and red to pale apricot for fast ones. Slow rates get one band per factor of ten (below 1, 1 to 10, 10 to 100), because that is where most of the time record sits; fast rates get one band per factor of about three (100, 300, 1,000, 3,000, 10,000), because that is where most of the sediment volume sits. Where later erosion removed part of a layer, its preserved rate is lower than the rate at which it was first laid down, so a dark band can mean slow deposition, later erosion or both. Slow, condensed intervals such as those near the MFS are where shells, glauconite and phosphate become concentrated; fast intervals bury and dilute them. When colours are blended along beds, rates are averaged on the log scale. In the Wheeler diagram each step shows the preserved rate over that step. Exercise mode always colours by sand content, because the slow, condensed bands trace the surfaces you are asked to find.</p>
+          <p><em>Colour by: Systems tract</em> colours every layer by the systems tract it was deposited in (FSST, LST, TST or HST), using the same colours as the tract strip in the wells and the bands on the sea-level chart. In the Wheeler diagram this gives the familiar textbook picture: each tract as a coloured wedge in distance and time, separated by gaps. Because this is an interpretation, exercise mode always shows sand content instead.</p>
         </details>
       </section>
     </div>
@@ -319,7 +321,7 @@ const flags = ()=>{const ex=$('optExercise').checked;return {
    surfaces students are asked to find. The student's choice comes back when exercise mode ends. */
 function colourBy(){
   if($('optExercise').checked)return 'sand';
-  const el=document.querySelector('input[name="colourBy"]:checked');return el&&el.value==='rate'?'rate':'sand';}
+  const el=document.querySelector('input[name="colourBy"]:checked'),v=el&&el.value;return v==='rate'||v==='tract'?v:'sand';}
 
 /* ---------- theme ---------- */
 function theme(){
@@ -362,6 +364,8 @@ let rasterCache=null;
 /* field to colour by: values per layer cell, a 256-step colour table and a value -> index map.
    Rate mode uses log10(rate), so smoothing averages in log space. */
 function rasterField(r,mode){
+  // systems tract: one flat colour per layer (categories are never blended along beds)
+  if(mode==='tract')return {vals:r.sandFraction,cat:true,tract:r.tractByLayer};
   if(mode==='rate')return {vals:RateScale.layerLogRates(r),lut:RateScale.LUT,idx:RateScale.logRateIdx};
   return {vals:r.sandFraction,lut:SAND_LUT,idx:sandIdx};
 }
@@ -391,7 +395,7 @@ function sectionRaster(G,r,smooth,mode){
       const th=topC[k]-botC[k];
       const lk=k+(th>1e-9?(z-botC[k])/th:0.5);
       let val=NaN;
-      if(smooth){
+      if(smooth&&!F.cat){
         let ws=0,vs=0;
         const ca=Math.max(0,i0-3),cb=Math.min(N-1,i0+4),la=Math.max(0,k-1),lb=Math.min(K-1,k+1);
         for(let l=la;l<=lb;l++){
@@ -406,7 +410,7 @@ function sectionRaster(G,r,smooth,mode){
       }
       if(val!==val){const a=sand[k][t<0.5?i0:i1],bb=sand[k][t<0.5?i1:i0];val=a===a?a:bb;}
       if(val!==val)continue;
-      const col=F.lut[F.idx(val)],o=(rr*Wp+c)*4;
+      const col=F.cat?(TRACT_RGB[F.tract[k]]||TRACT_RGB.none):F.lut[F.idx(val)],o=(rr*Wp+c)*4;
       px[o]=col[0];px[o+1]=col[1];px[o+2]=col[2];px[o+3]=255;
     }
   }
@@ -416,6 +420,8 @@ function sectionRaster(G,r,smooth,mode){
   return cv;
 }
 const TRACT_COL={HST:'#4f9d69',FSST:'#c0565a',LST:'#d49a2a',TST:'#3f86b8'};
+const TRACT_RGB=Object.fromEntries(Object.entries(TRACT_COL).map(([t,h])=>[t,[1,3,5].map(i=>parseInt(h.substr(i,2),16))]));
+TRACT_RGB.none=[136,136,136];
 const TRACT_NAME={HST:'Highstand (HST)',FSST:'Falling-stage (FSST)',LST:'Lowstand (LST)',TST:'Transgressive (TST)'};
 const SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
 const SURF_ORDER=['SB','BSFR','TS','MFS','WRS'];
@@ -472,7 +478,7 @@ function legendFitsOneRow(W,narrow,mode){
   c.font='600 12px '+theme().body;
   let surf=c.measureText('Surfaces').width+12;
   SURF_ORDER.forEach(t=>{surf+=34+6+c.measureText(t).width+16;});
-  const title=c.measureText(mode==='rate'?'Preserved rate (mm/kyr)':'Sand content').width;
+  const title=c.measureText(mode==='tract'?'Systems tract':mode==='rate'?'Preserved rate (mm/kyr)':'Sand content').width;
   const ml=56,mr=16,barW=260;
   // left margin + surface key + gap + bar title + 12 + bar + 52 (room for the last tick label) + right margin
   return ml+surf+16+title+12+barW+52+mr<=W;
@@ -618,13 +624,21 @@ function drawLegend(ctx,G,T,mode){
     x+=LW+6+ctx.measureText(names[t]).width+(G.narrow?10:16);
   });
   // colour bar: sand content, or preserved accumulation rate on a log scale
-  const rate=mode==='rate',title=rate?'Preserved rate (mm/kyr)':'Sand content';
+  const rate=mode==='rate',tract=mode==='tract',title=tract?'Systems tract':rate?'Preserved rate (mm/kyr)':'Sand content';
   const barW=G.stackLeg?Math.min(260,G.pw-60):260,barH=12;
   let bx,by;
   if(G.stackLeg){bx=G.ml+8;by=y0+46;}else{bx=G.ml+G.pw-barW-52;by=y0+4;}
   ctx.font='600 12px '+T.body;ctx.fillStyle=T.muted;ctx.textAlign=G.stackLeg?'left':'right';
   if(!G.stackLeg)ctx.fillText(title,bx-12,by+barH/2);
   else ctx.fillText(title,G.ml,y0+36);
+  if(tract){  // four labelled blocks, oldest-to-youngest order of a sequence
+    const TT=['FSST','LST','TST','HST'],bw=barW/TT.length;
+    TT.forEach((t,i)=>{ctx.fillStyle=TRACT_COL[t];ctx.fillRect(bx+i*bw,by,Math.ceil(bw),barH);});
+    ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.strokeRect(bx-.5,by-.5,barW+1,barH+1);
+    ctx.font='600 11.5px '+T.body;ctx.fillStyle=T.ink;ctx.textAlign='center';ctx.textBaseline='top';
+    TT.forEach((t,i)=>ctx.fillText(t,bx+(i+.5)*bw,by+barH+4));
+    return;
+  }
   if(rate){   // one flat block per rate band, as drawn in the section
     const B=RateScale.RATE_STOPS,bw=barW/B.length;
     B.forEach((c,i)=>{ctx.fillStyle='rgb('+c.join(',')+')';ctx.fillRect(bx+i*bw,by,Math.ceil(bw),barH);});
@@ -807,7 +821,7 @@ function drawWells(ctx,G,r,wells,T,fl){
         const sf=r.sandFraction[k][w];if(sf!==sf)continue;
         const wd=bw*Math.max(.06,Math.min(1,sf/SAND_MAX));
         const yt=zy(tp),yb=zy(bt);
-        ctx.fillStyle=fl.colour==='rate'?RateScale.rateColor(Math.pow(10,lrs[k][w])):sandColor(sf);ctx.fillRect(x0+2,yt,wd,Math.max(.8,yb-yt));
+        ctx.fillStyle=fl.colour==='rate'?RateScale.rateColor(Math.pow(10,lrs[k][w])):fl.colour==='tract'?(TRACT_COL[r.tractByLayer[k]]||'#888'):sandColor(sf);ctx.fillRect(x0+2,yt,wd,Math.max(.8,yb-yt));
         if(!fl.exercise){ctx.fillStyle=TRACT_COL[r.tractByLayer[k]]||'#888';ctx.fillRect(xr-6,yt,5,Math.max(.8,yb-yt));}
       }
       ctx.restore();
@@ -934,7 +948,7 @@ function renderWells(){
   drawWells(fitCanvas($('wellCv'),W,G.H),G,r,S.wells,T,fl);
   $('wellCv').dataset.log=G.LW+'x'+G.logH;   // log width x height in CSS px (read by the smoke test)
   const lg=$('wellLegend');
-  const barKey='<span>Bar width: sand content. Bar colour: '+(fl.colour==='rate'?'preserved accumulation rate':'sand content')+' (same key as the section).</span>';
+  const barKey='<span>Bar width: sand content. Bar colour: '+(fl.colour==='rate'?'preserved accumulation rate':fl.colour==='tract'?'systems tract':'sand content')+' (same key as the section).</span>';
   if(fl.exercise){lg.innerHTML=barKey+'<span>Systems tracts and surfaces hidden in exercise mode</span>';}
   else lg.innerHTML=barKey+'<span class="k">Tract strip</span>'+['FSST','LST','TST','HST'].map(t=>
     '<span><span class="tsw" style="background:'+TRACT_COL[t]+'"></span>'+TRACT_NAME[t]+'</span>').join('')+
@@ -945,7 +959,7 @@ function renderTime(){
   const W=Math.max(280,$('timeWrap').clientWidth),H=W<560?330:Math.min(400,Math.round(W*.36)+40);
   drawTime(fitCanvas($('timeCv'),W,H),W,H,r,flags(),theme());
 }
-function wheelerOpts(){const fl=flags();return {xView:viewRange(S.r),showSurfaces:fl.surf,showShoreline:true,exercise:fl.exercise,colourBy:fl.colour};}
+function wheelerOpts(){const fl=flags();return {xView:viewRange(S.r),showSurfaces:fl.surf,showShoreline:true,exercise:fl.exercise,colourBy:fl.colour,tractRGB:TRACT_RGB};}
 function renderWheeler(){
   const r=S.r;if(!r||typeof drawWheeler!=='function')return;
   const W=Math.max(280,$('wheelWrap').clientWidth),H=W<560?380:Math.min(520,Math.round(W*.45)+60);
@@ -967,6 +981,7 @@ $('wheelCv').addEventListener('mousemove',e=>{
   const what=h.state==='preserved'?'Sediment preserved':'Gap: less than 0.2 mm/kyr preserved';
   let s='<div class="kv"><span class="k">Time</span><b>'+h.timeKa.toFixed(0)+' ka</b></div><div class="kv"><span class="k">x</span><b>'+h.xKm.toFixed(1)+' km</b></div><div class="kv"><span class="k">Record</span><b>'+what+'</b></div>';
   if(h.state==='preserved'&&h.sand===h.sand)s+='<div class="kv"><span class="k">Sand</span><b><span class="sw" style="background:'+sandColor(h.sand)+'"></span>'+Math.round(100*h.sand)+'%</b></div>';
+  if(h.state==='preserved'&&h.layer!=null&&!$('optExercise').checked){const tr=S.r.tractByLayer[h.layer];s+='<div class="kv"><span class="k">Tract</span><b><span class="sw" style="background:'+(TRACT_COL[tr]||'#888')+'"></span>'+(TRACT_NAME[tr]||tr)+'</b></div>';}
   if(h.state==='preserved'&&h.rate>0)s+='<div class="kv"><span class="k">Preserved rate</span><b><span class="sw" style="background:'+RateScale.rateColor(h.rate)+'"></span>'+RateScale.fmtRate(h.rate)+' mm/kyr</b></div>';
   el.innerHTML=s;
 });
@@ -1076,9 +1091,9 @@ function syncExercise(){
 }
 $('optExercise').addEventListener('change',syncExercise);
 function syncColourLabels(){
-  const rate=colourBy()==='rate';
-  $('secBase').setAttribute('aria-label','Stratigraphic cross-section coloured by '+(rate?'preserved accumulation rate':'sand content'));
-  $('wheelCv').setAttribute('aria-label','Wheeler diagram: distance versus time, showing only preserved sediment, coloured by '+(rate?'preserved accumulation rate':'sand content'));
+  const m=colourBy(),what=m==='rate'?'preserved accumulation rate':m==='tract'?'systems tract':'sand content';
+  $('secBase').setAttribute('aria-label','Stratigraphic cross-section coloured by '+what);
+  $('wheelCv').setAttribute('aria-label','Wheeler diagram: distance versus time, showing only preserved sediment, coloured by '+what);
 }
 document.querySelectorAll('input[name="colourBy"]').forEach(el=>el.addEventListener('change',()=>{
   syncColourLabels();renderSection();renderWheeler();renderWells();
