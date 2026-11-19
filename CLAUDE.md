@@ -19,7 +19,7 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 | `ratescale.js` | Preserved accumulation rate (mm/kyr) and its log colour scale (UMD: `window.RateScale` / `module.exports`), used by "Colour by: Accumulation rate" |
 | `tests/engine.test.js` | Node test suite for the engine (86 tests) |
 | `tests/ratescale.test.js` | Node tests for the rate calculation and colour scale (13 tests) |
-| `tests/ui_smoke.py` | Playwright browser smoke test (12 checks) |
+| `tests/ui_smoke.py` | Playwright browser smoke test (13 checks) |
 | `tools/presets/` | Parameter-search scripts used to tune the presets |
 | `docs/NOTES_next_steps.md` | The instructor's plan for future work. Read it before starting larger changes |
 

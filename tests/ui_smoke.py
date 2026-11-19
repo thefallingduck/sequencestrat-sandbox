@@ -345,6 +345,24 @@ def main():
             page.set_viewport_size({"width": 1400, "height": 1000})
             time.sleep(0.6)
 
+            # ---- 14. long durations show a time warning and do not start a run
+            n_err = len(errors)
+            before_runs = done_count(page)
+            dur0 = page.input_value("#c-dur")
+            set_slider(page, "c-dur", 2000)
+            time.sleep(0.3)
+            warn_on = page.is_visible("#durWarn") and "on this computer" in (page.text_content("#durWarn") or "")
+            set_slider(page, "c-dur", dur0)
+            time.sleep(0.3)
+            warn_off = not page.is_visible("#durWarn")
+            no_run = done_count(page) == before_runs
+            check(
+                "14 long-run time warning",
+                warn_on and warn_off and no_run and len(errors) == n_err,
+                f"warning at 2000 ka={warn_on}, hidden at {dur0} ka={warn_off}, no run started={no_run}, "
+                f"new errors={len(errors)-n_err}",
+            )
+
             # ---- 12. "Scale each well separately" re-draws the wells only, and undoes cleanly
             n_err = len(errors)
             # check 6 left one well; place a second, thinner one so the two scales can differ

@@ -163,7 +163,7 @@ dialog p{margin:0 0 10px}
         <fieldset><legend>Basin &amp; subsidence</legend><div id="g-sub"></div></fieldset>
         <fieldset><legend>Sediment</legend><div id="g-sed"></div></fieldset>
         <fieldset><legend>Waves</legend><div id="g-wave"></div></fieldset>
-        <fieldset><legend>Run</legend><div id="g-run"></div></fieldset>
+        <fieldset><legend>Run</legend><div id="g-run"></div><p class="warnline" id="durWarn" role="status" hidden></p></fieldset>
         <details class="adv"><summary>Advanced</summary><div class="ctls" id="g-adv"></div></details>
         <fieldset style="margin-top:14px"><legend>Display</legend>
           <div class="seg" role="radiogroup" aria-label="Colour by">
@@ -232,6 +232,7 @@ dialog p{margin:0 0 10px}
           <p>Waves rework the shoreface. Between the shoreline and the depth set by <em>Wave base</em>, marine transport pushes the bed toward an equilibrium shoreface profile that deepens seaward at the <em>Shoreface gradient</em>, instead of toward a flat bed. When rising sea level drowns the gentle coastal plain, it is too shallow for that profile and waves cut it down, carrying fines offshore faster than sand. That erosion sweeps landward with the shoreline and forms the wave ravinement surface (WRS), drawn for each transgression where waves removed at least 0.3 m. At a stillstand the shoreface sits at equilibrium and waves erode little. Set Wave base to 0 to turn this off.</p>
           <p>Systems tracts follow the four-tract scheme, from relative sea level and shoreline movement: falling RSL is the FSST; rising RSL with a landward-moving shoreline is the TST; rising RSL with a seaward-moving shoreline is the LST after a fall or the HST after a transgression. Surfaces are placed at the transitions: BSFR at the onset of fall, SB at its end, TS at maximum regression and MFS at maximum transgression. An LST forms only if supply outpaces the early rise. If it cannot, the shoreline retreats as soon as sea level turns, there is no LST, and the TS sits directly on the SB. That is a valid outcome, not an error.</p>
           <p>The section is coloured by sand content. Each model cell is about 1 km wide and covers 1,000 years, so by default colours are blended along beds (inverse-distance-squared weighting, measured in model columns and layers so it does not blend across bedding); untick <em>Smooth along beds</em> to see the raw model cells. The Wheeler diagram shows the same run as distance against time, and only the sediment that is actually preserved, coloured by sand content. Blank areas are gaps in the record, whether nothing was deposited or it was eroded later. Time is grouped into steps of at least 3,000 years, and a step counts as a gap when less than 0.2 mm of sediment per thousand years is preserved from it (slow hemipelagic mud accumulates at roughly 1 to 5 mm per thousand years). Grain size is carried by the sediment itself: sand, silt and clay are moved separately, each bed records how much of each it holds, erosion takes grains from the bed surface in proportion to what is there, and eroded grains keep their size when they are deposited again. Clay travels farthest offshore, sand least. The model saves one layer per thousand years, so very thin beds such as a few-centimetre ravinement lag are averaged into the deposits around them. Limitations: a single dip profile cannot separate incised valleys from interfluves, so sediment that would fill valleys is spread across the whole coastal plain. This is a simplified teaching model inspired by sedflux (Hutton &amp; Syvitski, 2008), not sedflux itself.</p>
+          <p>Runs can last up to 2,000 ka (two million years). Runs longer than 600 ka take a minute or more, so a note under the Duration slider estimates the time on your computer; the page stays usable while the model runs, and pressing Run model again stops the run and starts over. On long runs with many sequences there is not always room to label every surface, so the wells, the Wheeler diagram and the sea-level chart then label only the sequence boundaries; the other surfaces are still drawn.</p>
           <p><em>Colour by: Accumulation rate</em> colours the section, the Wheeler diagram and the well logs by the <em>preserved</em> accumulation rate instead: how many millimetres of each 1,000-year layer are still there today, in mm per thousand years (the same as metres per million years). The colours come in eight bands on a logarithmic scale from 0.1 to 30,000 mm/kyr, running from dark violet for slow, condensed intervals through magenta and red to pale apricot for fast ones. Slow rates get one band per factor of ten (below 1, 1 to 10, 10 to 100), because that is where most of the time record sits; fast rates get one band per factor of about three (100, 300, 1,000, 3,000, 10,000), because that is where most of the sediment volume sits. Where later erosion removed part of a layer, its preserved rate is lower than the rate at which it was first laid down, so a dark band can mean slow deposition, later erosion or both. Slow, condensed intervals such as those near the MFS are where shells, glauconite and phosphate become concentrated; fast intervals bury and dilute them. When colours are blended along beds, rates are averaged on the log scale. In the Wheeler diagram each step shows the preserved rate over that step. Exercise mode always colours by sand content, because the slow, condensed bands trace the surfaces you are asked to find.</p>
           <p><em>Colour by: Systems tract</em> colours every layer by the systems tract it was deposited in (FSST, LST, TST or HST), using the same colours as the tract strip in the wells and the bands on the sea-level chart. In the Wheeler diagram this gives the familiar textbook picture: each tract as a coloured wedge in distance and time, separated by gaps. Because this is an interpretation, exercise mode always shows sand content instead.</p>
         </details>
@@ -274,7 +275,7 @@ const CTL = [
   {g:'g-sed',id:'incis',label:'Fall-stage river erosion',key:'fallIncision',min:1,max:4,step:0.25,unit:'×',to:v=>v,from:v=>v},
   {g:'g-wave',id:'wbase',label:'Wave base (ravinement depth)',key:'ravinementDepth',min:0,max:20,step:1,unit:'m',to:v=>v,from:v=>v},
   {g:'g-wave',id:'sfgrad',label:'Shoreface gradient',key:'shorefaceGradient',min:0.001,max:0.01,step:0.0005,unit:'m/m',to:v=>v,from:v=>v},
-  {g:'g-run',id:'dur',label:'Duration',key:'duration',min:50,max:600,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
+  {g:'g-run',id:'dur',label:'Duration',key:'duration',min:50,max:2000,step:10,unit:'ka',to:v=>v*1000,from:v=>v/1000},
   {g:'g-adv',id:'kf',label:'Fluvial diffusivity',key:'kFluvial',min:10000,max:300000,step:5000,unit:'m²/yr',to:v=>v,from:v=>v},
   {g:'g-adv',id:'km',label:'Marine diffusivity',key:'kMarine',min:10000,max:200000,step:5000,unit:'m²/yr',to:v=>v,from:v=>v},
   {g:'g-adv',id:'wave',label:'Wave-base depth',key:'waveBaseDepth',min:2,max:30,step:1,unit:'m',to:v=>v,from:v=>v},
@@ -298,7 +299,7 @@ CTL.forEach(c=>{
 function setCtl(id,v){const c=byId[id];c.input.value=v;c.out.textContent=fmtVal(c,c.input.value);}
 function defaultsUI(){const o={};CTL.forEach(c=>{o[c.id]=+(c.from(DEF[c.key]).toFixed(6));});return o;}
 function syncDetails(){[['amp2','d-sea2'],['amp3','d-sea3']].forEach(([a,d])=>{if(parseFloat(byId[a].input.value)>0)$(d).open=true;});}
-function applyUI(vals){CTL.forEach(c=>setCtl(c.id,vals[c.id]));syncDetails();}
+function applyUI(vals){CTL.forEach(c=>setCtl(c.id,vals[c.id]));syncDetails();updateDurWarn();}
 function params(){const p={};CTL.forEach(c=>{p[c.key]=c.to(parseFloat(c.input.value));});return p;}
 const PRESETS = {
   'default':{},
@@ -517,7 +518,8 @@ function drawSection(ctx,G,r,fl,T){
   // timelines
   if(fl.lines){
     ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=0.8;
-    for(let k=9;k<nL;k+=10){
+    const tStep=Math.max(10,Math.ceil(nL/30/10)*10);   // every 10 layers, thinned on long runs
+    for(let k=tStep-1;k<nL;k+=tStep){
       const top=r.horizons[k],th=r.thickness[k];ctx.beginPath();let pen=false;
       for(let i=0;i<N;i++){
         if(th[i]>1e-3){if(pen)ctx.lineTo(px[i],gy(G,top[i]));else{ctx.moveTo(px[i],gy(G,top[i]));pen=true;}}
@@ -578,7 +580,7 @@ function drawSection(ctx,G,r,fl,T){
         const b={x:cx-w/2,y:cy0+off-h/2,w,h};
         if(!placed.some(q=>b.x<q.x+q.w&&b.x+b.w>q.x&&b.y<q.y+q.h&&b.y+b.h>q.y)){best=b;break;}
       }
-      if(!best)best={x:cx-w/2,y:cy0-h/2,w,h};
+      if(!best)return;   // no free spot (crowded long runs): skip rather than overlap
       best.x=Math.max(G.ml+2,Math.min(G.ml+G.pw-w-2,best.x));
       placed.push(best);
       ctx.fillStyle='rgba(15,15,12,.62)';rrect(ctx,best.x,best.y,w,h,4);ctx.fill();
@@ -841,11 +843,20 @@ function drawWells(ctx,G,r,wells,T,fl){
         ctx.restore();
         // labels: centred on their line where possible, never overlapping, inside the log height
         ctx.font='700 11px '+T.head;ctx.textAlign='left';ctx.textBaseline='middle';
-        const lab=groups.map(g=>G.wrapLabel(g.types)),hh=lab.map(l=>l.length*LH);
-        const ly=groups.map(g=>g.y);
+        // all labels if they fit beside the log; on crowded (long) runs only SBs; else none
+        // "fits" = labels stay near their lines: within the stretch of log the lines cover plus
+        // a few label heights, so labels never fan out far from what they name
+        const fitH=gs=>{if(!gs.length)return true;
+          const span=gs[gs.length-1].y-gs[0].y,room=Math.min(bot-top,span+4*LH);
+          return gs.reduce((a,g)=>a+G.wrapLabel(g.types).length*LH,0)<=room;};
+        let lgs=groups;
+        if(!fitH(lgs))lgs=groups.filter(g=>g.types.indexOf('SB')>=0);
+        if(!fitH(lgs))lgs=[];
+        const lab=lgs.map(g=>G.wrapLabel(g.types)),hh=lab.map(l=>l.length*LH);
+        const ly=lgs.map(g=>g.y);
         for(let j=0;j<ly.length;j++)ly[j]=Math.max(ly[j],j?ly[j-1]+(hh[j-1]+hh[j])/2:top+hh[j]/2);
         for(let j=ly.length-1;j>=0;j--)ly[j]=Math.min(ly[j],j===ly.length-1?bot-hh[j]/2:ly[j+1]-(hh[j]+hh[j+1])/2);
-        groups.forEach((g,j)=>{
+        lgs.forEach((g,j)=>{
           const lx=xr+12;
           ctx.strokeStyle=T.muted;ctx.lineWidth=1;ctx.beginPath();
           ctx.moveTo(xr+1,g.y);ctx.lineTo(xr+5,g.y);ctx.lineTo(lx-2,ly[j]);ctx.stroke();
@@ -919,13 +930,18 @@ function drawTime(ctx,W,H,r,fl,T){
   // surface labels above plot a
   if(showBands){
     ctx.font='700 11px '+T.head;ctx.textAlign='center';ctx.textBaseline='bottom';
-    const used=[];
-    r.surfaces.filter(s=>s.type!=='WRS').slice().sort((p,q)=>p.time-q.time).forEach(s=>{
-      const x=tx(s.time/1000);let row=0;
-      while(used.some(u=>u.row===row&&Math.abs(u.x-x)<34))row++;
-      used.push({x,row});
-      ctx.fillStyle=T.ink;ctx.fillText(s.type,x,top-3-row*12);
-    });
+    // all surfaces if they fit in three rows (the room below the tract key); on crowded (long)
+    // runs only SBs; else none
+    const place=list=>{const used=[];let maxRow=0;
+      list.forEach(s=>{const x=tx(s.time/1000);let row=0;
+        while(used.some(u=>u.row===row&&Math.abs(u.x-x)<34))row++;
+        used.push({x,row,s});maxRow=Math.max(maxRow,row);});
+      return {used,maxRow};};
+    const all=r.surfaces.filter(s=>s.type!=='WRS').slice().sort((p,q)=>p.time-q.time);
+    let pl=place(all);
+    if(pl.maxRow>2)pl=place(all.filter(s=>s.type==='SB'));
+    if(pl.maxRow>2)pl={used:[]};
+    pl.used.forEach(u=>{ctx.fillStyle=T.ink;ctx.fillText(u.s.type,u.x,top-3-u.row*12);});
   }
   // x axis
   const by=plots[1].y+hp;
@@ -1045,6 +1061,7 @@ function getWorker(){
   return worker;
 }
 function finishRun(r,ms,err){
+  S.running=false;
   $('pill').classList.remove('on');$('pill').textContent='Running\u2026';
   if(err){$('status').textContent='Model error: '+err;return;}
   S.r=r;S.ms=ms;
@@ -1057,7 +1074,7 @@ function finishRun(r,ms,err){
       const n=S.wells.length,fr=n>1?[0.4,0.75]:[0.5];
       S.wells=fr.map(f=>Math.min(r.x.length-1,Math.floor(f*xv/r.dx)));
     }}
-  S.hover=null;updateReadout(null);
+  S.hover=null;updateReadout(null);updateDurWarn();
   renderAll();
 }
 function runOnPage(prm){
@@ -1068,6 +1085,9 @@ function runOnPage(prm){
   },30));
 }
 function run(){
+  // pressing Run during a run (e.g. a long one) stops it and starts over with the current settings
+  if(S.running&&worker){try{worker.terminate();}catch(e){}worker=null;}
+  S.running=true;
   $('pill').classList.add('on');$('pill').textContent='Running\u2026';
   const prm=params(),id=++runId,w=getWorker();
   if(!w){runOnPage(prm);return;}
@@ -1084,8 +1104,20 @@ function run(){
   w.postMessage({id,params:prm});
 }
 function setDirty(on){$('dirty').hidden=!on;$('runBtn').classList.toggle('stale',on);}
+/* Runs longer than the usual range (> 600 ka) can take a minute or more. Estimate the time on
+   this computer from the last run's speed (time per thousand years); about linear in duration. */
+function updateDurWarn(){
+  const ka=parseFloat(byId.dur.input.value),el=$('durWarn');
+  if(!(ka>600)){el.hidden=true;return;}
+  const msPerKa=(S.r&&S.ms>0)?S.ms/(S.r.params.duration/1000):30;
+  const sec=msPerKa*ka/1000;
+  const est=sec<90?'about '+Math.max(10,Math.round(sec/5)*5)+' seconds':'about '+(Math.round(sec/30)/2)+' minutes';
+  el.textContent='Long run: '+est+' on this computer. The page stays usable while it runs; press Run model again to stop it and start over.';
+  el.hidden=false;
+}
 CTL.forEach(c=>c.input.addEventListener('input',()=>{
   c.out.textContent=fmtVal(c,c.input.value);$('preset').value='custom';setDirty(true);
+  if(c.id==='dur')updateDurWarn();
 }));
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
