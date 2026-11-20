@@ -7,6 +7,7 @@
 var SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
 var SURF_SHOW=['SB','BSFR','TS','MFS'];
 var EPS=0.01; // m: net surface change below this counts as none
+var STEP_KYR_DEFAULT=3; // kyr: minimum length of one Wheeler time step
 var MIN_RATE_DEFAULT=0.2; // mm/kyr: preserved accumulation slower than this is drawn as a gap
 var C_REMOVED=[196,196,192], C_HATCH=[132,132,128], C_ERODING=[128,128,124];
 var C_ERODING_D=[96,96,94], C_REMOVED_D=[110,110,108], C_HATCH_D=[160,160,156];
@@ -20,17 +21,19 @@ function sandRGB(f){return (typeof window.sandRGB==='function'?window.sandRGB:fa
 
 /* state codes: 0 hiatus, 1 preserved, 2 removed, 3 eroding */
 var cache=new WeakMap();
-function classify(r,minRate){
+function classify(r,minRate,stepKyr){
   if(!(minRate>=0)) minRate=MIN_RATE_DEFAULT;
+  if(!(stepKyr>0)) stepKyr=STEP_KYR_DEFAULT;
   var byRate=cache.get(r); if(!byRate){byRate={}; cache.set(r,byRate);}
-  var c=byRate[minRate]; if(c) return c;
-  /* Group layers into time bins (>= 3 kyr, ~100 rows per diagram) so flood-pulse cut-and-fill
+  var key=minRate+'|'+stepKyr;
+  var c=byRate[key]; if(c) return c;
+  /* Group layers into time bins (>= stepKyr, default 3 kyr, ~100 rows per diagram) so flood-pulse cut-and-fill
      at single-layer resolution does not dominate. Each bin is classified by what it left:
      preserved sediment, or else its net surface change (deposited-then-removed, eroding, hiatus). */
   var N=r.x.length, K=r.nLayers, st=new Uint8Array(N*K), sand=new Float32Array(N*K), rate=new Float32Array(N*K);
   var th=r.thickness, sf=r.sandFraction, ps=r.paleoSurface, t=r.history.t, sub=r.subsidence;
   var dtL=K>1?(t[K-1]-t[0])/(K-1):t[0];
-  var bin=Math.max(1, Math.max(Math.round(3000/dtL), Math.round(K/100)));
+  var bin=Math.max(1, Math.max(Math.round(stepKyr*1000/dtL), Math.round(K/100)));
   for(var k0=0;k0<K;k0+=bin){
     var k1=Math.min(K-1,k0+bin-1);
     var dtB=t[k1]-(k0>0?t[k0-1]:0);
@@ -49,7 +52,7 @@ function classify(r,minRate){
       for(k=k0;k<=k1;k++){st[k*N+i]=s; sand[k*N+i]=fs; rate[k*N+i]=rt;}
     }
   }
-  c={st:st,sand:sand,rate:rate,N:N,K:K,bin:bin,minRate:minRate}; byRate[minRate]=c; return c;
+  c={st:st,sand:sand,rate:rate,N:N,K:K,bin:bin,minRate:minRate,stepKyr:stepKyr}; byRate[key]=c; return c;
 }
 
 function layout(W,H,opts){
@@ -91,7 +94,7 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
   var cv=window.__wheelerCv||(window.__wheelerCv=document.createElement('canvas'));
   cv.width=iw; cv.height=ih;
   var c2=cv.getContext('2d'), img=c2.createImageData(iw,ih), d=img.data;
-  var cl=classify(r,opts&&opts.minRate), st=cl.st, N=cl.N, sand=cl.sand, rate=cl.rate;
+  var cl=classify(r,opts&&opts.minRate,opts&&opts.stepKyr), st=cl.st, N=cl.N, sand=cl.sand, rate=cl.rate;
   var byRate=opts.colourBy==='rate'&&!!window.RateScale;
   var byTract=opts.colourBy==='tract'&&!!opts.tractRGB&&!opts.exercise, tbl=r.tractByLayer;
   var colOf=new Int32Array(iw), kOf=new Int32Array(ih);
@@ -192,7 +195,7 @@ window.drawWheeler=function(ctx,W,H,r,opts,T){
     byTract?{k:'pt',t:long?'Preserved sediment (colour = systems tract)':'Preserved (tract)'}
     :byRate?{k:'pr',t:long?'Preserved sediment (colour = preserved rate)':'Preserved (rate)'}
           :{k:'p',t:long?'Preserved sediment (colour = sand content)':'Preserved (sand content)'},
-    {k:'h',t:long?'Gap: less than 0.2 mm/kyr preserved':'Gap (<0.2 mm/kyr)'}];
+    {k:'h',t:long?'Gap: less than '+cl.minRate+' mm/kyr preserved':'Gap (<'+cl.minRate+' mm/kyr)'}];
   ctx.font='11.5px '+body; ctx.textBaseline='middle'; ctx.textAlign='left';
   var lx0=ml, ly0=L.narrow?10:11, sw=14, x0=lx0, y0=ly0;
   items.forEach(function(it){
@@ -231,7 +234,7 @@ window.wheelerHitTest=function(r,opts,W,H,cx,cy){
   if(cx<L.ml||cx>=L.ml+L.pw||cy<L.mt||cy>=L.mt+L.ph) return null;
   var xView=opts.xView||r.x[r.x.length-1], dur=r.params.duration;
   var xm=(cx-L.ml)/L.pw*xView, tyr=(1-(cy-L.mt)/L.ph)*dur;
-  var i=colAt(r,xm,xView), k=layerAt(r,tyr), cl=classify(r,opts&&opts.minRate), s=cl.st[k*cl.N+i];
+  var i=colAt(r,xm,xView), k=layerAt(r,tyr), cl=classify(r,opts&&opts.minRate,opts&&opts.stepKyr), s=cl.st[k*cl.N+i];
   var f=cl.sand[k*cl.N+i];
   return {xKm:xm/1000,timeKa:tyr/1000,
     state:['hiatus','preserved','removed','eroding'][s],

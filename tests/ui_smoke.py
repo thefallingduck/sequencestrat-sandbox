@@ -461,6 +461,44 @@ def main():
                 f"reset restores full view={sec_back == sec_full}, no run started={done_count(page) == before_runs}, "
                 f"new errors={len(errors)-n_err}",
             )
+            # ---- 16. Wheeler gap cutoff slider and time-step control: redraw only the Wheeler diagram, no run
+            n_err = len(errors)
+            before_runs = done_count(page)
+            page.locator("#wheelCv").scroll_into_view_if_needed()
+            time.sleep(0.2)
+            def wheel_gap_text():
+                b = page.locator("#wheelCv").bounding_box()
+                for fy in (0.15, 0.3, 0.5, 0.7, 0.9):
+                    for fx in (0.1, 0.3, 0.5, 0.7, 0.9):
+                        page.mouse.move(b["x"] + b["width"] * fx, b["y"] + b["height"] * fy)
+                        t = page.text_content("#wheelReadout") or ""
+                        if "Gap" in t:
+                            return t
+                return ""
+            wh_default = md5(page.evaluate(CANVAS_HASH_JS, "wheelCv"))
+            default_val = page.text_content("#wheelCutVal")
+            set_slider(page, "wheelCut", 7)   # index 7 = 30 mm/kyr
+            time.sleep(0.5)
+            wh_cut = md5(page.evaluate(CANVAS_HASH_JS, "wheelCv"))
+            cut_val = page.text_content("#wheelCutVal")
+            gap_cut = "less than 30 mm/kyr" in wheel_gap_text()
+            page.select_option("#wheelStep", "20")
+            time.sleep(0.5)
+            wh_step = md5(page.evaluate(CANVAS_HASH_JS, "wheelCv"))
+            page.select_option("#wheelStep", "3")
+            set_slider(page, "wheelCut", 0)
+            time.sleep(0.5)
+            wh_back = md5(page.evaluate(CANVAS_HASH_JS, "wheelCv"))
+            check(
+                "16 Wheeler cutoff and time step",
+                default_val == "0.2" and cut_val == "30" and wh_cut != wh_default and gap_cut
+                and wh_step != wh_cut and wh_back == wh_default
+                and done_count(page) == before_runs and len(errors) == n_err,
+                f"default cutoff label={default_val}, cutoff 30 label={cut_val}, canvas changes={wh_cut != wh_default}, "
+                f"hover text shows 30={gap_cut}, step 20 changes canvas={wh_step != wh_cut}, "
+                f"defaults restore original={wh_back == wh_default}, no run started={done_count(page) == before_runs}, "
+                f"new errors={len(errors)-n_err}",
+            )
             page.close()
 
             # ---- 8. file:// fallback (workers blocked) completes a run
