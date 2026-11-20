@@ -589,14 +589,16 @@ function legendFitsOneRow(W,narrow,mode){
   // left margin + surface key + gap + bar title + 12 + bar + 52 (room for the last tick label) + right margin
   return ml+surf+16+title+12+barW+52+mr<=W;
 }
-/* x positions and rows of the surface key; wraps to a second row when it would run past the canvas edge */
+/* x positions and rows of the surface key; wraps to a second row when an entry would run past
+   the right edge of the plot (G.ml+G.pw, i.e. the canvas width less the right margin) */
 function surfKeyLayout(c,W,narrow,ml){
   c.font='600 12px '+theme().body;
   const LW=narrow?22:34,gap=narrow?10:16,x0=ml+c.measureText('Surfaces').width+(narrow?8:12);
+  const right=W-(narrow?10:16);   // same right margin (mr) as layoutSection
   let x=x0,row=0;const pos=[];
   SURF_ORDER.forEach(t=>{
     const w=LW+6+c.measureText(t).width;
-    if(x>x0&&x+w>W-8){x=x0;row++;}
+    if(x>x0&&x+w>right){x=x0;row++;}
     pos.push({t,x,row});x+=w+gap;
   });
   return {pos,rows:row+1,LW};
