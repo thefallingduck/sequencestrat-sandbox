@@ -461,6 +461,35 @@ def main():
                 f"reset restores full view={sec_back == sec_full}, no run started={done_count(page) == before_runs}, "
                 f"new errors={len(errors)-n_err}",
             )
+            # ---- 16. footer: version line and changelog; opening it starts no run and reveals nothing
+            n_err = len(errors)
+            before_runs = done_count(page)
+            ver = page.inner_text("#verLine").strip()
+            ver_ok = re.fullmatch(r"Version [a-z]+-\d{4}\.\d+ · \d{1,2} [A-Z][a-z]{2} \d{4}", ver) is not None
+            closed_before = not page.is_visible("#changeList")
+            page.locator("#verLine").scroll_into_view_if_needed()
+            page.click("#verLine")
+            time.sleep(0.2)
+            items = page.locator("#changeList li").count()
+            open_now = page.is_visible("#changeList")
+            foot_txt = page.inner_text("#siteFoot")
+            no_interp = not re.search(r"\b(FSST|LST|TST|HST|BSFR|MFS|WRS)\b", foot_txt)
+            for w in (400, 1400):
+                page.set_viewport_size({"width": w, "height": 900})
+                time.sleep(0.3)
+                page.locator("#siteFoot").scroll_into_view_if_needed()
+                page.screenshot(path=os.path.join(SHOTS, f"footer_{w}.png"))
+            page.click("#verLine")
+            time.sleep(0.2)
+            closed_after = not page.is_visible("#changeList")
+            check(
+                "16 footer version and changelog",
+                ver_ok and closed_before and open_now and 3 <= items <= 8 and closed_after and no_interp
+                and done_count(page) == before_runs and len(errors) == n_err,
+                f"version='{ver}' ok={ver_ok}, closed at start={closed_before}, opens={open_now}, "
+                f"entries={items}, closes again={closed_after}, no tract/surface names={no_interp}, "
+                f"no run started={done_count(page) == before_runs}, new errors={len(errors)-n_err}",
+            )
             page.close()
 
             # ---- 8. file:// fallback (workers blocked) completes a run
