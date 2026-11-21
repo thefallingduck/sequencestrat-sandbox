@@ -534,26 +534,26 @@ const SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
 /* "Show starting basement": the basement before any subsidence. The model only tilts the basement
    (no loading or compaction), so it is the final basement plus rate x duration. It is not an
    interpretation, so exercise mode leaves it available. */
-const BASE0_DASH=[6,4],BASE0_NAME='Starting basement';
+const BASE0_DASH=[6,4],BASE0_NAME='Starting basement',BASE0_COL='#f08a3c';   // orange: distinct from the white surfaces
 const base0On=()=>!!($('optBase0')&&$('optBase0').checked);
 const base0Z=(r,i)=>r.basement[i]+r.subsidence[i]*r.params.duration;
 function drawBase0(ctx,G,r,px,N,T,part){   // part: 'line', 'label' or both when omitted
   // call inside the plot clip; px = pixel x of each column. Dark halo first, then the light dashes.
   ctx.save();ctx.lineJoin='round';
-  if(part!=='label')[['rgba(20,18,12,.5)',3.5],['#e9e1cf',1.5]].forEach(([col,w])=>{
+  if(part!=='label')[['rgba(20,18,12,.6)',4],[BASE0_COL,2]].forEach(([col,w])=>{
     ctx.strokeStyle=col;ctx.lineWidth=w;ctx.setLineDash(BASE0_DASH);
     ctx.beginPath();for(let i=0;i<N;i++){const y=gy(G,base0Z(r,i));if(i)ctx.lineTo(px[i],y);else ctx.moveTo(px[i],y);}
     ctx.stroke();
   });
   ctx.setLineDash([]);
-  if(part==='line'){ctx.restore();return;}
+  if(part==='line'||G.narrow){ctx.restore();return;}   // on phones the legend entry explains the line
   // label at the left edge of the view, just above the line (below it if that would leave the plot)
   const ic=Math.max(0,Math.min(N-1,Math.floor((G.x0+(G.x1-G.x0)*0.02)/r.dx)));
   let ly=gy(G,base0Z(r,ic))-6,base='bottom';
   if(ly<G.mt+14){ly+=12;base='top';}
   ctx.font='italic 600 11.5px '+T.body;ctx.textAlign='left';ctx.textBaseline=base;ctx.lineWidth=3;
   ctx.strokeStyle='rgba(20,18,12,.6)';ctx.strokeText('starting basement',G.ml+8,ly);
-  ctx.fillStyle='#f3ecdb';ctx.fillText('starting basement',G.ml+8,ly);
+  ctx.fillStyle=BASE0_COL;ctx.fillText('starting basement',G.ml+8,ly);
   ctx.restore();
 }
 const SURF_ORDER=['SB','BSFR','TS','MFS','WRS'];
@@ -604,12 +604,12 @@ function ylim(r,xv){
    fit on one row at canvas width W? Measures the same text drawLegend draws, so it holds for
    any font and either colour mode, instead of relying on a fixed width threshold. */
 let legendMeasureCtx=null;
-function legendFitsOneRow(W,narrow,mode){
+function legendFitsOneRow(W,narrow,mode,extra){
   if(narrow)return false;
   const c=legendMeasureCtx||(legendMeasureCtx=document.createElement('canvas').getContext('2d'));
   c.font='600 12px '+theme().body;
   let surf=c.measureText('Surfaces').width+12;
-  SURF_ORDER.forEach(t=>{surf+=34+6+c.measureText(t).width+16;});
+  (extra?SURF_ORDER.concat([BASE0_NAME]):SURF_ORDER).forEach(t=>{surf+=34+6+c.measureText(t).width+16;});
   const title=c.measureText(mode==='tract'?'Systems tract':mode==='rate'?'Preserved rate (mm/kyr)':'Sand content').width;
   const ml=56,mr=16,barW=260;
   // left margin + surface key + gap + bar title + 12 + bar + 52 (room for the last tick label) + right margin
@@ -631,7 +631,7 @@ function surfKeyLayout(c,W,narrow,ml,extra){
 }
 function layoutSection(W,r,mode,noZoom){   // noZoom: the animation, whose legend has no surface key
   const narrow=W<560;
-  const stackLeg=!legendFitsOneRow(W,narrow,mode);   // surface key and colour bar on two rows if one is too tight
+  const stackLeg=!legendFitsOneRow(W,narrow,mode,!noZoom&&base0On());   // surface key and colour bar on two rows if one is too tight
   const keyRows=surfKeyLayout(legendMeasureCtx||(legendMeasureCtx=document.createElement('canvas').getContext('2d')),W,narrow,narrow?44:56,!noZoom&&base0On()).rows;
   const keyExtra=(keyRows-1)*18;
   const legendH=(stackLeg?92:58)+keyExtra;
@@ -779,7 +779,7 @@ function drawLegend(ctx,G,T,mode){
     const yy=y+row*18;
     ctx.setLineDash(t===BASE0_NAME?BASE0_DASH:SURF_DASH[t]);
     // legend sits on the panel background, so use ink for the stroke
-    ctx.strokeStyle=T.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+LW,yy);ctx.stroke();
+    ctx.strokeStyle=t===BASE0_NAME?BASE0_COL:T.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+LW,yy);ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle=T.ink;ctx.fillText(t,x+LW+6,yy);
   });
