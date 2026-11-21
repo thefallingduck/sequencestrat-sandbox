@@ -23,6 +23,7 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 | `tests/ratescale.test.js` | Node tests for the rate calculation and colour scale (13 tests) |
 | `tests/gifwriter.test.js` | Node tests for the GIF encoder, including an LZW round trip (8 tests) |
 | `tests/sealevel.test.js` | Node tests for the sea-level record and a record-forced run (5 tests) |
+| `tests/loading.test.js` | Node tests for the sediment-loading subsidence option (16 tests) |
 | `tests/ui_smoke.py` | Playwright browser smoke test (15 checks) |
 | `tools/presets/` | Parameter-search scripts used to tune the presets |
 | `docs/NOTES_next_steps.md` | The instructor's plan for future work. Read it before starting larger changes |
@@ -34,6 +35,7 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 - Sand, silt and clay are moved separately using the bed-surface composition (active layer 0.3 m). Eroded grains keep their size.
 - Fall-stage river incision boosts fluvial diffusivity while relative sea level falls. Wave ravinement adds an equilibrium shoreface slope in the shoreface zone.
 - Eustasy is a start level plus a trend plus three sine cycles. Subsidence is a tilt seaward of a hinge, with the rate given at 150 km.
+- Optional sediment loading (`sedimentLoading`, off by default): the basement also sinks under the sediment load, by local (Airy) isostasy or, with `elasticThickness` > 0, by flexure of an elastic plate, relaxing over `loadResponseTime`. With it off, runs are identical to runs without the option.
 - The far edge is open. Mass balance is tracked per fraction.
 - Systems tracts (FSST, LST, TST, HST) and surfaces (BSFR, SB, TS, MFS, WRS) are classified automatically. This uses relative sea level at the shoreline and the shoreline trajectory.
 
