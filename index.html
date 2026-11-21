@@ -137,6 +137,14 @@ dialog p{margin:0 0 10px}
   .main{order:1;width:100%}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+.sitefoot{margin:18px 0 8px;font-size:12.5px;color:var(--muted)}
+.sitefoot summary{cursor:pointer;display:inline;list-style:none;font-family:var(--f-mono);text-decoration:underline dotted;text-underline-offset:3px}
+.sitefoot summary::-webkit-details-marker{display:none}
+.sitefoot summary:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:2px}
+.sitefoot .changes{margin:8px 0 0;padding:10px 14px;max-width:70ch;background:var(--surface);border:1px solid var(--line);border-radius:8px;color:var(--ink)}
+.sitefoot .changes ul{margin:0;padding-left:18px}
+.sitefoot .changes li{margin:3px 0}
+.sitefoot .changes-h{margin:0 0 4px;font-weight:600;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -288,6 +296,12 @@ dialog p{margin:0 0 10px}
       </section>
     </div>
   </div>
+  <footer class="sitefoot" id="siteFoot">
+    <details id="verDetails">
+      <summary id="verLine" title="Show recent changes">Version</summary>
+      <div class="changes"><p class="changes-h">Recent changes, newest first</p><ul id="changeList"></ul></div>
+    </details>
+  </footer>
 </div>
 
 <dialog id="expDlg" aria-label="Exported image">
@@ -305,6 +319,23 @@ dialog p{margin:0 0 10px}
 'use strict';
 const DEF = SeqStrat.DEFAULTS;
 const $ = id => document.getElementById(id);
+
+/* ---------- version and changelog (footer) ----------
+   Bump VERSION when a change goes live. The id follows the term tag (e.g. fall-2026)
+   plus a release number. CHANGES is shown to students, newest first, 3-8 entries. */
+const VERSION = {id:'fall-2026.4', date:'20 Nov 2026'};
+const CHANGES = [
+  'The surface key no longer runs off the edge on phones',
+  'Sea-level record: a clearer slider for choosing which part of the real record to run',
+  'New option: drive sea level with a real record of the last 3.6 million years (Berends et al., 2021)',
+  'Shorter sea-level cycles are allowed',
+  'Zoom and pan the dip section',
+  'Fixed: erosion could pull sediment out from under buried beds',
+  'Runs can last up to 2 million years',
+  'Animation through time, with a time slider, play button and GIF export'
+];
+$('verLine').textContent='Version '+VERSION.id+' \u00b7 '+VERSION.date;
+$('changeList').innerHTML=CHANGES.map(c=>'<li>'+c.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</li>').join('');
 
 /* ---------- controls ---------- */
 const CTL = [
