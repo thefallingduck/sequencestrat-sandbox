@@ -208,6 +208,7 @@ dialog p{margin:0 0 10px}
           <label class="chk"><input type="checkbox" id="optSmooth" checked> Smooth along beds</label>
           <label class="chk"><input type="checkbox" id="optLines"> Show timelines</label>
           <label class="chk"><input type="checkbox" id="optWhole"> Show whole basin</label>
+          <label class="chk"><input type="checkbox" id="optBase0"> Show starting basement</label>
           <label class="chk"><input type="checkbox" id="optExercise"> Exercise mode</label>
         </fieldset>
         <div class="row">
@@ -276,7 +277,7 @@ dialog p{margin:0 0 10px}
         <details>
           <summary>How the model works</summary>
           <p>The model is a 2D dip section: sediment enters at the landward (left) edge and is redistributed by diffusion that is fast on the coastal plain and at the shoreface, then decays with water depth offshore, which builds prograding clinoforms. Random flood pulses bring more, and sandier, sediment for a while. Together, eustasy and subsidence give relative sea level at the shoreline. Eustasy is either the sum of the sine cycles you set, or a real reconstruction of global sea level over the last 3.6 million years (Berends et al., 2021).</p>
-          <p>Eustasy is the sum of a long-term trend and up to three sine cycles (short, medium and long), loosely like 3rd-, 2nd- and 1st-order cycles but compressed in time for teaching. The basin is 300 km long and the section view zooms to where the sediment is (tick <em>Show whole basin</em> to see all of it). The far edge is open: the thin mud film that creeps along the deep basin floor passes out of the model instead of piling against a wall, and the status line reports how much left. The initial shoreline sets where sea level meets the sloping basement at the start of the run. Subsidence is zero landward of the hinge and increases linearly seaward of it; the slider sets the rate at 150 km, and the rate keeps increasing beyond that.</p>
+          <p>Eustasy is the sum of a long-term trend and up to three sine cycles (short, medium and long), loosely like 3rd-, 2nd- and 1st-order cycles but compressed in time for teaching. The basin is 300 km long and the section view zooms to where the sediment is (tick <em>Show whole basin</em> to see all of it). The far edge is open: the thin mud film that creeps along the deep basin floor passes out of the model instead of piling against a wall, and the status line reports how much left. The initial shoreline sets where sea level meets the sloping basement at the start of the run. Subsidence is zero landward of the hinge and increases linearly seaward of it; the slider sets the rate at 150 km, and the rate keeps increasing beyond that. The basement only tilts: there is no loading or compaction. Tick <em>Show starting basement</em> to draw where the basement began as a dashed line; the gap between that line and the top of the basement is the total subsidence, largest seaward.</p>
           <p>While relative sea level falls, rivers erode the coastal plain more efficiently, standing in for flow confined to incised valleys. The <em>Fall-stage river erosion</em> control sets how much stronger (1× turns it off). Stronger erosion truncates more of the older topsets beneath the sequence boundary and delivers more sediment to the falling-stage shoreline.</p>
           <p>Waves rework the shoreface. Between the shoreline and the depth set by <em>Wave base</em>, marine transport pushes the bed toward an equilibrium shoreface profile that deepens seaward at the <em>Shoreface gradient</em>, instead of toward a flat bed. When rising sea level drowns the gentle coastal plain, it is too shallow for that profile and waves cut it down, carrying fines offshore faster than sand. That erosion sweeps landward with the shoreline and forms the wave ravinement surface (WRS), drawn for each transgression where waves removed at least 0.3 m. At a stillstand the shoreface sits at equilibrium and waves erode little. Set Wave base to 0 to turn this off.</p>
           <p>Systems tracts follow the four-tract scheme, from relative sea level and shoreline movement: falling RSL is the FSST; rising RSL with a landward-moving shoreline is the TST; rising RSL with a seaward-moving shoreline is the LST after a fall or the HST after a transgression. Surfaces are placed at the transitions: BSFR at the onset of fall, SB at its end, TS at maximum regression and MFS at maximum transgression. An LST forms only if supply outpaces the early rise. If it cannot, the shoreline retreats as soon as sea level turns, there is no LST, and the TS sits directly on the SB. That is a valid outcome, not an error.</p>
@@ -420,7 +421,7 @@ function applyPreset(name){setSource('sine');applyUI(Object.assign(defaultsUI(),
 /* ---------- state ---------- */
 const S = {r:null,wells:[85,118],hover:null,ms:0,secGeo:null,rafOver:0,zoom:null};
 const flags = ()=>{const ex=$('optExercise').checked;return {
-  surf:$('optSurf').checked&&!ex, labels:$('optLabels').checked&&!ex, lines:$('optLines').checked, smooth:$('optSmooth').checked, exercise:ex, wellSep:$('optWellSep').checked,
+  surf:$('optSurf').checked&&!ex, labels:$('optLabels').checked&&!ex, lines:$('optLines').checked, smooth:$('optSmooth').checked, exercise:ex, wellSep:$('optWellSep').checked, base0:$('optBase0').checked,
   colour:colourBy()};};
 /* "Colour by": 'sand' (sand content, default) or 'rate' (preserved accumulation rate, mm/kyr) */
 /* Exercise mode always colours by sand content: the condensed bands of the rate scale trace the
@@ -530,6 +531,31 @@ const TRACT_RGB=Object.fromEntries(Object.entries(TRACT_COL).map(([t,h])=>[t,[1,
 TRACT_RGB.none=[136,136,136];
 const TRACT_NAME={HST:'Highstand (HST)',FSST:'Falling-stage (FSST)',LST:'Lowstand (LST)',TST:'Transgressive (TST)'};
 const SURF_DASH={SB:[],MFS:[6,4],TS:[2,3],BSFR:[14,5],WRS:[10,3,2,3]};
+/* "Show starting basement": the basement before any subsidence. The model only tilts the basement
+   (no loading or compaction), so it is the final basement plus rate x duration. It is not an
+   interpretation, so exercise mode leaves it available. */
+const BASE0_DASH=[6,4],BASE0_NAME='Starting basement';
+const base0On=()=>!!($('optBase0')&&$('optBase0').checked);
+const base0Z=(r,i)=>r.basement[i]+r.subsidence[i]*r.params.duration;
+function drawBase0(ctx,G,r,px,N,T,part){   // part: 'line', 'label' or both when omitted
+  // call inside the plot clip; px = pixel x of each column. Dark halo first, then the light dashes.
+  ctx.save();ctx.lineJoin='round';
+  if(part!=='label')[['rgba(20,18,12,.5)',3.5],['#e9e1cf',1.5]].forEach(([col,w])=>{
+    ctx.strokeStyle=col;ctx.lineWidth=w;ctx.setLineDash(BASE0_DASH);
+    ctx.beginPath();for(let i=0;i<N;i++){const y=gy(G,base0Z(r,i));if(i)ctx.lineTo(px[i],y);else ctx.moveTo(px[i],y);}
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+  if(part==='line'){ctx.restore();return;}
+  // label at the left edge of the view, just above the line (below it if that would leave the plot)
+  const ic=Math.max(0,Math.min(N-1,Math.floor((G.x0+(G.x1-G.x0)*0.02)/r.dx)));
+  let ly=gy(G,base0Z(r,ic))-6,base='bottom';
+  if(ly<G.mt+14){ly+=12;base='top';}
+  ctx.font='italic 600 11.5px '+T.body;ctx.textAlign='left';ctx.textBaseline=base;ctx.lineWidth=3;
+  ctx.strokeStyle='rgba(20,18,12,.6)';ctx.strokeText('starting basement',G.ml+8,ly);
+  ctx.fillStyle='#f3ecdb';ctx.fillText('starting basement',G.ml+8,ly);
+  ctx.restore();
+}
 const SURF_ORDER=['SB','BSFR','TS','MFS','WRS'];
 
 /* ---------- helpers ---------- */
@@ -591,22 +617,22 @@ function legendFitsOneRow(W,narrow,mode){
 }
 /* x positions and rows of the surface key; wraps to a second row when an entry would run past
    the right edge of the plot (G.ml+G.pw, i.e. the canvas width less the right margin) */
-function surfKeyLayout(c,W,narrow,ml){
+function surfKeyLayout(c,W,narrow,ml,extra){
   c.font='600 12px '+theme().body;
   const LW=narrow?22:34,gap=narrow?10:16,x0=ml+c.measureText('Surfaces').width+(narrow?8:12);
   const right=W-(narrow?10:16);   // same right margin (mr) as layoutSection
   let x=x0,row=0;const pos=[];
-  SURF_ORDER.forEach(t=>{
+  (extra?SURF_ORDER.concat([BASE0_NAME]):SURF_ORDER).forEach(t=>{
     const w=LW+6+c.measureText(t).width;
     if(x>x0&&x+w>right){x=x0;row++;}
     pos.push({t,x,row});x+=w+gap;
   });
   return {pos,rows:row+1,LW};
 }
-function layoutSection(W,r,mode,noZoom){
+function layoutSection(W,r,mode,noZoom){   // noZoom: the animation, whose legend has no surface key
   const narrow=W<560;
   const stackLeg=!legendFitsOneRow(W,narrow,mode);   // surface key and colour bar on two rows if one is too tight
-  const keyRows=surfKeyLayout(legendMeasureCtx||(legendMeasureCtx=document.createElement('canvas').getContext('2d')),W,narrow,narrow?44:56).rows;
+  const keyRows=surfKeyLayout(legendMeasureCtx||(legendMeasureCtx=document.createElement('canvas').getContext('2d')),W,narrow,narrow?44:56,!noZoom&&base0On()).rows;
   const keyExtra=(keyRows-1)*18;
   const legendH=(stackLeg?92:58)+keyExtra;
   const ml=narrow?44:56,mr=narrow?10:16,mt=10,mb=narrow?36:42;
@@ -643,6 +669,7 @@ function drawSection(ctx,G,r,fl,T){
   const nL=r.nLayers;
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(sectionRaster(G,r,fl.smooth!==false,fl.colour),G.ml,G.mt,G.pw,G.ph);
+  if(fl.base0)drawBase0(ctx,G,r,px,N,T,'line');
   // timelines
   if(fl.lines){
     ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=0.8;
@@ -717,6 +744,7 @@ function drawSection(ctx,G,r,fl,T){
       ctx.fillStyle='#fff';ctx.fillText(tr.type,best.x+w/2,best.y+h/2+0.5);
     });
   }
+  if(fl.base0)drawBase0(ctx,G,r,px,N,T,'label');   // on top of tract labels
   ctx.restore();
   // frame + axes
   ctx.strokeStyle=T.line;ctx.lineWidth=1;ctx.strokeRect(G.ml-.5,G.mt-.5,G.pw+1,G.ph+1);
@@ -745,11 +773,11 @@ function drawLegend(ctx,G,T,mode){
   let x=G.ml,y=y0+12;
   ctx.fillStyle=T.muted;ctx.textAlign='left';ctx.fillText('Surfaces',x,y);
   x+=ctx.measureText('Surfaces').width+(G.narrow?8:12);
-  const K=surfKeyLayout(ctx,G.W,G.narrow,G.ml),LW=K.LW;
+  const K=surfKeyLayout(ctx,G.W,G.narrow,G.ml,base0On()),LW=K.LW;
   ctx.textBaseline='middle';
   K.pos.forEach(({t,x,row})=>{
     const yy=y+row*18;
-    ctx.setLineDash(SURF_DASH[t]);
+    ctx.setLineDash(t===BASE0_NAME?BASE0_DASH:SURF_DASH[t]);
     // legend sits on the panel background, so use ink for the stroke
     ctx.strokeStyle=T.ink;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+LW,yy);ctx.stroke();
     ctx.setLineDash([]);
@@ -836,7 +864,7 @@ function updateReadout(h){
   if(!h){el.innerHTML='<span class="hint">Hover the section to read sand content, preserved accumulation rate and systems tract; click to place a pseudo-well.</span>';return;}
   let s='<div class="kv"><span class="k">x</span><b>'+(h.xm/1000).toFixed(1)+' km</b></div>'+
         '<div class="kv"><span class="k">Elevation</span><b>'+h.z.toFixed(1)+' m</b></div>';
-  const L=h.hit;
+  const L=h.hit,r0=S.r;
   if(L.k!==undefined){
     s+='<div class="kv"><span class="k">Sand</span><b><span class="sw" style="background:'+sandColor(L.sand)+'"></span>'+Math.round(100*L.sand)+'%</b></div>'+
        '<div class="kv"><span class="k">Preserved rate</span><b><span class="sw" style="background:'+RateScale.rateColor(L.rate)+'"></span>'+RateScale.fmtRate(L.rate)+' mm/kyr</b></div>'+
@@ -844,6 +872,8 @@ function updateReadout(h){
        ($('optExercise').checked?'':'<div class="kv"><span class="k">Tract</span><b>'+(TRACT_NAME[L.tract]||L.tract)+'</b></div>')+
        '<div class="kv"><span class="k">Age</span><b>'+(L.t/1000).toFixed(0)+' ka</b></div>';
   } else s+='<div class="kv"><span class="k">Here</span><b>'+(L.base?'Basement':(L.water?'Sea water':'Air'))+'</b></div>';
+  if($('optBase0').checked){const i=Math.max(0,Math.min(r0.x.length-1,Math.floor(h.xm/r0.dx)));
+    s+='<div class="kv"><span class="k">Subsided</span><b>'+(r0.subsidence[i]*r0.params.duration).toFixed(1)+' m since start</b></div>';}
   el.innerHTML=s;
 }
 
@@ -1325,6 +1355,7 @@ function drawAnimFrame(ctx,G,f,T){
   }
   const cv=document.createElement('canvas');cv.width=Wp;cv.height=Hp;cv.getContext('2d').putImageData(img,0,0);
   ctx.imageSmoothingEnabled=true;ctx.drawImage(cv,G.ml,G.mt,G.pw,G.ph);
+  if(base0On())drawBase0(ctx,G,r,px,N,T);   // fixed reference: the basement sinks away from it
   // water up to this moment's sea level
   const sl=f.seaLevel,ySl=gy(G,sl),surf=i=>B[i]+top[(nb-1)*Ncol+i];
   ctx.fillStyle='rgba(79,111,194,.85)';
@@ -1538,7 +1569,7 @@ syncRecordUI();
 $('runBtn').addEventListener('click',()=>{setDirty(false);schedule();});
 $('preset').addEventListener('change',e=>{if(e.target.value!=='custom'){applyPreset(e.target.value);setDirty(false);schedule();}});
 $('resetBtn').addEventListener('click',()=>{$('preset').value='default';applyPreset('default');setDirty(false);schedule();});
-['optSurf','optLabels','optLines','optWhole','optSmooth'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='optWhole')S.zoom=null;renderSection();renderWheeler();if(id==='optSurf')renderWells();if(id==='optSmooth')renderAnim();}));
+['optSurf','optLabels','optLines','optWhole','optSmooth','optBase0'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='optWhole')S.zoom=null;renderSection();renderWheeler();if(id==='optSurf')renderWells();if(id==='optSmooth'||id==='optBase0')renderAnim();}));
 function syncExercise(){
   const ex=$('optExercise').checked;
   $('banner').hidden=!ex;

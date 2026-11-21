@@ -383,6 +383,44 @@ def main():
                 f"gif {gif_size/1e6:.2f} MB, main view re-run={not no_run}, new errors={len(errors)-n_err}",
             )
 
+            # ---- 16. "Show starting basement": redraws only (section, hover readout, animation)
+            n_err = len(errors)
+            before_runs = done_count(page)
+            page.locator("#secOver").scroll_into_view_if_needed()
+            time.sleep(0.2)
+            sec_off = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            anim_off = show_frame(n_frames - 1)
+            box = page.locator("#secOver").bounding_box()
+            page.mouse.move(box["x"] + box["width"] * 0.6, box["y"] + box["height"] * 0.4)
+            page.mouse.move(box["x"] + box["width"] * 0.61, box["y"] + box["height"] * 0.4)
+            time.sleep(0.3)
+            sub_off = "Subsided" in (page.text_content("#readout") or "")
+            page.check("#optBase0")
+            time.sleep(0.6)
+            sec_on = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            page.locator("#secOver").scroll_into_view_if_needed()   # the checkbox click may have scrolled
+            time.sleep(0.2)
+            box = page.locator("#secOver").bounding_box()
+            page.mouse.move(box["x"] + box["width"] * 0.62, box["y"] + box["height"] * 0.4)
+            time.sleep(0.3)
+            ro = page.text_content("#readout") or ""
+            sub_on = "Subsided" in ro and "m since start" in ro
+            anim_on = md5(page.evaluate(CANVAS_HASH_JS, "animCv"))
+            no_run = done_count(page) == before_runs
+            page.uncheck("#optBase0")
+            time.sleep(0.6)
+            sec_back = md5(page.evaluate(CANVAS_HASH_JS, "secBase"))
+            anim_back = md5(page.evaluate(CANVAS_HASH_JS, "animCv"))
+            check(
+                "16 starting basement display option",
+                sec_on != sec_off and sec_back == sec_off and anim_on != anim_off and anim_back == anim_off
+                and not sub_off and sub_on and no_run and len(errors) == n_err,
+                f"section changes={sec_on != sec_off}, restores={sec_back == sec_off}, "
+                f"animation changes={anim_on != anim_off}, restores={anim_back == anim_off}, "
+                f"'Subsided' only when on={sub_on and not sub_off} ({ro[-40:].strip()!r}), "
+                f"run started={not no_run}, new errors={len(errors)-n_err}",
+            )
+
             # ---- 14. long durations show a time warning and do not start a run
             n_err = len(errors)
             before_runs = done_count(page)

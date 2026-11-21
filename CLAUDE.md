@@ -23,7 +23,7 @@ This is a browser-based teaching model for GY 306 W Sedimentology & Stratigraphy
 | `tests/ratescale.test.js` | Node tests for the rate calculation and colour scale (13 tests) |
 | `tests/gifwriter.test.js` | Node tests for the GIF encoder, including an LZW round trip (8 tests) |
 | `tests/sealevel.test.js` | Node tests for the sea-level record and a record-forced run (5 tests) |
-| `tests/ui_smoke.py` | Playwright browser smoke test (15 checks) |
+| `tests/ui_smoke.py` | Playwright browser smoke test (16 checks) |
 | `tools/presets/` | Parameter-search scripts used to tune the presets |
 | `docs/NOTES_next_steps.md` | The instructor's plan for future work. Read it before starting larger changes |
 
