@@ -45,6 +45,19 @@
     subsidenceMax: 0.1,      // m/kyr at subsidenceRefX (rate keeps increasing linearly beyond)
     subsidenceRefX: 150000,  // m, where the rate equals subsidenceMax
     hingeX: 30000,           // m, no subsidence landward of this
+    // sediment loading (off by default): the basement also sinks under the weight of the
+    // sediment piled on it, and rebounds where sediment is eroded. Added to the tilt above.
+    //   elasticThickness 0: local (Airy) isostasy, each column sinks under its own load only.
+    //   elasticThickness > 0: an elastic plate spreads the sinking over a flexural wavelength
+    //   and lifts a low bulge beyond the load.
+    // At full response, sinking = sediment thickness x (rhoSediment - rhoWater) / (rhoMantle - rhoWater),
+    // about 0.47 m per metre of sediment with these densities.
+    sedimentLoading: false,
+    elasticThickness: 0,     // m (0 = local isostasy; ~5-50 km for real lithosphere)
+    loadResponseTime: 10000, // yr, e-folding time for the basement to catch up with the load (0 = instant)
+    rhoSediment: 2100,       // kg/m^3, water-saturated sediment
+    rhoWater: 1025,          // kg/m^3
+    rhoMantle: 3300,         // kg/m^3
     // sediment supply and transport
     sedimentSupply: 15,      // m^2/yr entering at x=0
     supplyVariability: 0.6,  // 0..1, layer-to-layer flood pulses (makes interbedding)
@@ -187,6 +200,29 @@
     return f * p.subsidenceMax / 1000;
   }
 
+  /* Load response kernel: wEq[i] = sum_m kernel[|m|] * thickness[i+m] * loadRatio, where
+     loadRatio = (rhoSediment - rhoWater) / (rhoMantle - rhoWater). For an elastic plate it is the
+     line-load deflection of an infinite plate, e^(-u)(cos u + sin u) with u = |x|/alpha and
+     alpha = (4D / ((rhoMantle - rhoWater) g))^(1/4), sampled per cell and scaled so it sums to
+     exactly 1 (so a wide load sinks by the Airy amount). Zero thickness gives [1] (Airy). */
+  function loadKernel(p, dx, N) {
+    const Te = Math.max(0, p.elasticThickness || 0);
+    if (Te <= 0) return Float64Array.of(1);
+    const E = 7e10, nu = 0.25, g = 9.81;
+    const D = E * Te * Te * Te / (12 * (1 - nu * nu));
+    const alpha = Math.sqrt(Math.sqrt(4 * D / ((p.rhoMantle - p.rhoWater) * g))); // sqrt is exact in every engine; pow is not
+    const M = Math.min(N - 1, Math.ceil(5 * Math.PI * alpha / dx)); // e^(-5 pi) ~ 1.5e-7
+    const kern = new Float64Array(M + 1);
+    let sum = 0;
+    for (let m = 0; m <= M; m++) {
+      const u = m * dx / alpha;
+      kern[m] = pexp(-u) * (psin(u + 0.5 * Math.PI) + psin(u));
+      sum += m === 0 ? kern[m] : 2 * kern[m];
+    }
+    for (let m = 0; m <= M; m++) kern[m] /= sum;
+    return kern;
+  }
+
   function hash(a, b) {
     let h = (a * 374761393 + b * 668265263) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -227,6 +263,14 @@
 
     const nRec = Math.max(1, Math.round(p.duration / p.recordInterval));
     const recDt = p.duration / nRec;
+    // sediment loading: subL[i] is the load-driven basement sinking rate (m/yr, negative =
+    // rebound) for the current record step, wLoad[i] the load-driven sinking so far (m)
+    const loadOn = !!p.sedimentLoading;
+    const subL = new Float64Array(N), wLoad = new Float64Array(N), wEq = new Float64Array(N);
+    const kern = loadOn ? loadKernel(p, dx, N) : null;
+    const loadRatio = (p.rhoSediment - p.rhoWater) / (p.rhoMantle - p.rhoWater);
+    const loadRelax = p.loadResponseTime > 0 ? 1 - pexp(-recDt / p.loadResponseTime) : 1;
+    const loadRateShore = [];   // subL at the shoreline per record step (for relative sea level)
     // Optional snapshots for the animation (p.snapshotFrames > 0). They only READ the model
     // state at the end of a record step, so a run gives identical results with or without them.
     // To keep memory bounded on long runs, record layers are grouped into at most
@@ -336,9 +380,21 @@
       let fsi = Math.max(0, p.supplySilt), fc = Math.max(0, 1 - p.supplySand - p.supplySilt);
       const rest = (fsi + fc) > 0 ? (1 - fs) / (fsi + fc) : 0;
       const supJ = [supply * fs, supply * fsi * rest, supply * fc * rest];
+      // sediment loading: the basement moves toward equilibrium with the present load
+      if (loadOn) {
+        const M = kern.length - 1;
+        for (let i = 0; i < N; i++) {
+          let w = 0;
+          const j0 = Math.max(0, i - M), j1 = Math.min(N - 1, i + M);
+          for (let j = j0; j <= j1; j++) w += kern[i > j ? i - j : j - i] * (h[j] - base[j]);
+          wEq[i] = w * loadRatio;
+        }
+        for (let i = 0; i < N; i++) subL[i] = (wEq[i] - wLoad[i]) * loadRelax / recDt;
+      }
       // fall-stage incision: rivers erode harder while relative sea level falls at the shoreline
-      const xsNow = x[shorelineIndex(h, eustasy(p, t))];
-      const fallRate = -((eustasy(p, t + recDt) - eustasy(p, t)) / recDt + subsidenceRate(p, xsNow)) * 1000;
+      const siNow = shorelineIndex(h, eustasy(p, t));
+      const xsNow = x[siNow];
+      const fallRate = -((eustasy(p, t + recDt) - eustasy(p, t)) / recDt + subsidenceRate(p, xsNow) + subL[siNow]) * 1000;
       const target = 1 + (Math.max(1, p.fallIncision) - 1) * Math.min(1, Math.max(0, fallRate / p.fallRateRef));
       boostState = target >= boostState ? target
         : target + (boostState - target) * pexp(-recDt / Math.max(1, p.incisionMemory));
@@ -459,7 +515,11 @@
           }
         }
         // subsidence lowers basement and surface together
-        for (let i = 0; i < N; i++) { const d = sub[i] * dt; base[i] -= d; h[i] -= d; }
+        if (loadOn) {
+          for (let i = 0; i < N; i++) { const dl = subL[i] * dt, d = sub[i] * dt + dl; base[i] -= d; h[i] -= d; wLoad[i] += dl; }
+        } else {
+          for (let i = 0; i < N; i++) { const d = sub[i] * dt; base[i] -= d; h[i] -= d; }
+        }
         t += dt;
       }
       const sl = eustasy(p, t);
@@ -468,6 +528,7 @@
       hist.eustasy.push(sl);
       hist.shorelineX.push(xsl);
       hist.shorelineZ.push(sl);
+      loadRateShore.push(subL[Math.min(N - 1, Math.max(0, Math.floor(xsl / dx)))]);
       paleoSurface.push(Float32Array.from(h)); // surface as it was at this time
       if (snapshots && ((k + 1) % snapEvery === 0 || k === nRec - 1)) {
         // the section as it is now: per band, its top (height above the basement of this
@@ -523,7 +584,7 @@
     for (let k = 0; k < nRec; k++) {
       const t0 = k === 0 ? 0 : hist.t[k - 1], t1 = hist.t[k];
       const de = (eustasy(p, t1) - eustasy(p, t0)) / (t1 - t0) * 1000;
-      hist.rslRate.push(de + subsidenceRate(p, hist.shorelineX[k]) * 1000);
+      hist.rslRate.push(de + (subsidenceRate(p, hist.shorelineX[k]) + loadRateShore[k]) * 1000);
     }
 
     const seq = interpret(p, hist, horizons, x, dx, base, { waveCut, cutBottom, surface: h });
@@ -535,6 +596,7 @@
       basement: Float32Array.from(base), surface: Float32Array.from(h),
       seaLevel: eustasy(p, p.duration),
       thickness: thickF, phi, sandFraction, horizons, paleoSurface, subsidence: Float32Array.from(sub),
+      loadSubsidence: Float32Array.from(wLoad),   // m the basement sank under the sediment load (all 0 when loading is off)
       history: hist,
       tracts: seq.tracts, surfaces: seq.surfaces, tractByLayer: seq.tractByLayer,
       massBalance: { massIn, massOut, massStored, error: (massStored + massOut - massIn) / Math.max(1, massIn),

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Browser-based 2D sequence stratigraphy teaching model (GY 306 W)",
   "scripts": {
-    "test": "node --test tests/engine.test.js tests/ratescale.test.js tests/gifwriter.test.js tests/sealevel.test.js"
+    "test": "node --test tests/engine.test.js tests/ratescale.test.js tests/gifwriter.test.js tests/sealevel.test.js tests/loading.test.js"
   },
   "license": "UNLICENSED"
 }
